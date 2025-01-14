@@ -1,0 +1,8 @@
+PyQt6>=6.6.0
+requests>=2.31.0
+pandas>=2.2.0
+pillow>=10.2.0
+pytest>=8.0.0
+responses>=0.25.0
+pytest-qt>=4.4.0
+pytest-cov>=4.1.0 
