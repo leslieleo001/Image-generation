@@ -4,6 +4,7 @@ from typing import Dict, Any, Optional, List
 from pathlib import Path
 import logging
 from datetime import datetime
+import time
 
 class APIError(Exception):
     """API错误基类"""
@@ -30,11 +31,7 @@ class SiliconFlowAPI:
             self.session.proxies.update(proxy)
         
         # 设置默认请求头
-        self.session.headers.update({
-            "Authorization": f"Bearer {api_key}",  # 添加Bearer前缀
-            "Content-Type": "application/json",
-            "Accept": "application/json"
-        })
+        self.session.headers.update(self._get_headers())
         
         # 设置日志
         self.logger = logging.getLogger("SiliconFlowAPI")
@@ -46,105 +43,129 @@ class SiliconFlowAPI:
             self.logger.addHandler(handler)
             self.logger.setLevel(logging.DEBUG)  # 设置为DEBUG级别以显示详细信息
     
-    def generate_image(self, 
-                      prompt: str,
-                      model: str = "stabilityai/stable-diffusion-3-5-large",
-                      negative_prompt: str = "",
-                      size: str = "1024x1024",
-                      batch_size: int = 1,
-                      seed: Optional[int] = None,
-                      num_inference_steps: int = 20,
-                      guidance_scale: float = 7.5,
-                      prompt_enhancement: bool = False) -> Dict[str, Any]:
+    def _get_headers(self) -> Dict[str, str]:
+        """获取请求头"""
+        return {
+            "Authorization": f"Bearer {self.api_key}",
+            "Content-Type": "application/json",
+            "Accept": "application/json"
+        }
+    
+    def generate_image(self, prompt, model, negative_prompt="", size="1024x1024", 
+                      batch_size=1, num_inference_steps=20, guidance_scale=7.5, 
+                      prompt_enhancement=False, seeds=None, max_retries=3):
         """
         生成图片
-        
-        Args:
-            prompt: 提示词
-            model: 模型名称
-            negative_prompt: 负面提示词
-            size: 图片尺寸
-            batch_size: 批量生成数量 (1-4)
-            seed: 随机种子 (0-2147483647)
-            num_inference_steps: 推理步数 (1-50，turbo模型固定为4)
-            guidance_scale: 引导系数 (0-20)
-            prompt_enhancement: 提示增强
-            
-        Returns:
-            Dict: API响应数据，包含图片URL等信息
+        :param prompt: 提示词
+        :param model: 模型名称
+        :param negative_prompt: 负面提示词
+        :param size: 图片尺寸
+        :param batch_size: 生成数量
+        :param num_inference_steps: 生成步数
+        :param guidance_scale: 引导系数
+        :param prompt_enhancement: 是否启用提示词增强
+        :param seeds: 种子值列表，每个图片对应一个种子值
+        :param max_retries: 最大重试次数
+        :return: API响应结果
         """
-        # 验证参数
-        if not prompt.strip():
-            raise ValueError("提示词不能为空")
-            
-        if not (0 <= guidance_scale <= 20):
-            raise ValueError("引导系数必须在0到20之间")
-            
-        if not (1 <= batch_size <= 4):
-            raise ValueError("生成数量必须在1到4之间")
-            
-        if not (1 <= num_inference_steps <= 50):
-            raise ValueError("生成步数必须在1到50之间")
-            
-        if seed is not None and not (0 <= seed <= 2147483647):
-            raise ValueError("种子值必须在0到2147483647之间")
-            
-        # 对于turbo模型，强制使用4步
-        if "turbo" in model.lower():
-            num_inference_steps = 4
-            self.logger.info("turbo模型已自动设置为4步")
+        retry_count = 0
+        last_error = None
         
-        payload = {
-            "model": model,
-            "prompt": prompt.strip(),
-            "negative_prompt": negative_prompt.strip(),
-            "image_size": size,  # 修改参数名为image_size
-            "batch_size": batch_size,  # 使用batch_size
-            "num_inference_steps": num_inference_steps,
-            "guidance_scale": guidance_scale,
-            "prompt_enhancement": prompt_enhancement
-        }
-        
-        if seed is not None:
-            payload["seed"] = seed
-            
-        try:
-            self.logger.debug(f"发送请求到 {self.base_url}/images/generations")
-            self.logger.debug(f"请求参数: {payload}")
-            
-            response = self.session.post(
-                f"{self.base_url}/images/generations",
-                json=payload
-            )
-            
-            # 检查响应状态码
-            if response.status_code == 200:
-                result = response.json()
-                self.logger.debug(f"API响应成功: {result}")
-                return result
-            
-            # 尝试解析错误信息
+        while retry_count < max_retries:
             try:
-                error_data = response.json()
-                error_message = error_data.get('message', response.text)
-            except:
-                error_message = response.text
-            
-            self.logger.error(f"API请求失败: {error_message}")
-            
-            # 根据状态码返回特定错误
-            if response.status_code == 401:
-                raise APIError("API密钥无效", 401)
-            elif response.status_code == 429:
-                raise APIError("超出请求限制，如需更多额度请联系 contact@siliconflow.cn", 429)
-            elif response.status_code == 503:
-                raise APIError("服务暂时不可用，请稍后重试", 503)
-            else:
-                raise APIError(f"API请求失败: {error_message}", response.status_code)
+                # 准备请求参数
+                data = {
+                    "model": model,
+                    "prompt": prompt,
+                    "negative_prompt": negative_prompt,
+                    "image_size": size,
+                    "batch_size": batch_size,
+                    "num_inference_steps": num_inference_steps,
+                    "guidance_scale": guidance_scale,
+                    "prompt_enhancement": prompt_enhancement
+                }
                 
-        except requests.exceptions.RequestException as e:
-            self.logger.error(f"网络请求失败: {str(e)}")
-            raise APIError(f"网络请求失败: {str(e)}")
+                # 添加种子值
+                if seeds and len(seeds) == batch_size:
+                    data["seeds"] = seeds
+                    self.logger.debug(f"使用种子值: {seeds}")
+                else:
+                    self.logger.warning("未提供种子值或种子值数量不匹配，将使用随机种子")
+                
+                # 发送请求
+                self.logger.debug(f"发送请求到 {self.base_url}/images/generations")
+                self.logger.debug(f"请求参数: {data}")
+                
+                response = self.session.post(
+                    f"{self.base_url}/images/generations",
+                    json=data,
+                    timeout=300
+                )
+                
+                # 检查响应状态
+                if response.status_code == 200:
+                    result = response.json()
+                    
+                    # 处理返回的种子值
+                    if "data" in result:
+                        images = result["data"]
+                        if seeds and len(seeds) == len(images):
+                            for i, img in enumerate(images):
+                                img["seed"] = seeds[i]
+                        self.logger.debug(f"处理后的图片数据: {images}")
+                        result["data"] = images
+                    
+                    return result
+                    
+                elif response.status_code == 429:
+                    error_msg = "API请求超出限制，请稍后重试"
+                    self.logger.warning(f"第{retry_count + 1}次尝试失败: {error_msg}")
+                    if retry_count == max_retries - 1:
+                        raise Exception(error_msg)
+                    time.sleep(5 * (retry_count + 1))  # 指数退避
+                
+                elif response.status_code == 503:
+                    error_msg = "API服务暂时不可用，请稍后重试"
+                    self.logger.warning(f"第{retry_count + 1}次尝试失败: {error_msg}")
+                    if retry_count == max_retries - 1:
+                        raise Exception(error_msg)
+                    time.sleep(5 * (retry_count + 1))
+                
+                else:
+                    try:
+                        error_data = response.json()
+                        error_msg = error_data.get('message', response.text)
+                    except:
+                        error_msg = f"未知错误 (状态码: {response.status_code})"
+                    
+                    self.logger.error(f"API请求失败: {error_msg}")
+                    if retry_count == max_retries - 1:
+                        raise Exception(f"API请求失败: {error_msg}")
+                
+            except requests.exceptions.Timeout:
+                error_msg = "请求超时，请检查网络状态"
+                self.logger.warning(f"第{retry_count + 1}次尝试失败: {error_msg}")
+                if retry_count == max_retries - 1:
+                    raise Exception(error_msg)
+                time.sleep(5 * (retry_count + 1))
+                
+            except requests.exceptions.ConnectionError:
+                error_msg = "网络连接失败，请检查网络设置"
+                self.logger.warning(f"第{retry_count + 1}次尝试失败: {error_msg}")
+                if retry_count == max_retries - 1:
+                    raise Exception(error_msg)
+                time.sleep(5 * (retry_count + 1))
+                
+            except Exception as e:
+                last_error = str(e)
+                self.logger.error(f"生成图片时出错: {last_error}")
+                if retry_count == max_retries - 1:
+                    raise Exception(f"生成图片失败: {last_error}")
+                time.sleep(5 * (retry_count + 1))
+            
+            retry_count += 1
+        
+        raise Exception(f"达到最大重试次数，最后一次错误: {last_error}")
     
     def download_image(self, url: str, save_path: Path) -> Path:
         """
@@ -210,3 +231,18 @@ class SiliconFlowAPI:
         except requests.exceptions.RequestException as e:
             self.logger.error(f"网络请求失败: {str(e)}")
             return False 
+    
+    def validate_params(self, params: Dict) -> None:
+        if not params["prompt"].strip():
+            raise ValueError("提示词不能为空")
+        
+        if not 0 <= params["guidance_scale"] <= 20:
+            raise ValueError("引导系数必须在0-20之间")
+        
+        if "turbo" in params["model"].lower():
+            params["num_inference_steps"] = 4
+        elif not 1 <= params["num_inference_steps"] <= 50:
+            raise ValueError("生成步数必须在1-50之间")
+        
+        if not params["random_seed"] and not 1 <= params["seed"] <= 9999999999:
+            raise ValueError("随机种子必须在1-9999999999之间") 

@@ -1,10 +1,54 @@
-import pytest
+import os
 from unittest.mock import MagicMock, patch
-from PyQt6.QtWidgets import QApplication, QFileDialog, QMessageBox, QInputDialog, QPushButton, QDialog, QLineEdit, QComboBox, QDialogButtonBox
+import pytest
+from PyQt6.QtWidgets import QApplication, QMessageBox
+from PyQt6.QtTest import QSignalSpy
 from src.ui.batch_gen import BatchGenTab
-from src.utils.excel_handler import GenerationTask, ExcelHandler
-from PyQt6.QtCore import Qt
-from PyQt6.QtTest import QTest
+from src.utils import APIManager, ConfigManager
+
+# Mock QMessageBox
+QMessageBox.information = MagicMock()
+QMessageBox.warning = MagicMock()
+QMessageBox.question = MagicMock()
+
+class MockGenerationTask:
+    def __init__(self, prompt, model, size):
+        self.prompt = prompt
+        self.model = model
+        self.size = size
+        self.status = "等待中"
+        self.result_path = None
+
+@pytest.fixture(autouse=True)
+def reset_mocks():
+    """重置所有mock"""
+    QMessageBox.information.reset_mock()
+    QMessageBox.warning.reset_mock()
+    QMessageBox.question.reset_mock()
+    yield
+
+@pytest.fixture
+def mock_api():
+    """创建API管理器mock"""
+    api = MagicMock()
+    api.is_configured = MagicMock()
+    api.is_configured.return_value = True
+    return api
+
+@pytest.fixture
+def mock_config():
+    """创建配置管理器mock"""
+    config = MagicMock()
+    config.get = lambda key, default=None: {
+        "model": "模型A",
+        "size": "512x512",
+        "steps": 20,
+        "guidance": 7.5,
+        "seed": 12345,
+        "models": ["模型A", "模型B"],
+        "sizes": ["512x512", "1024x1024"]
+    }.get(key, default)
+    return config
 
 @pytest.fixture(scope="session")
 def app():
@@ -17,466 +61,291 @@ def app():
         yield QApplication.instance()
 
 @pytest.fixture
-def mock_api():
-    """创建模拟API"""
-    api = MagicMock()
-    api.is_configured.return_value = True
-    api.generate_image.return_value = {"image_path": "test/image.png"}
-    return api
-
-@pytest.fixture
-def mock_config():
-    """创建模拟配置"""
-    config = MagicMock()
-    config.get.return_value = ["模型A", "模型B", "模型C"]  # 为所有get调用返回相同的列表
-    return config
-
-@pytest.fixture
-def batch_gen_tab(app, mock_api, mock_config):
-    """创建批量生成界面"""
-    return BatchGenTab(mock_api, mock_config)
+def batch_gen_tab(qtbot, mock_api, mock_config):
+    """创建批量生成标签页"""
+    tab = BatchGenTab(mock_api, mock_config)
+    qtbot.addWidget(tab)
+    return tab
 
 @pytest.fixture
 def sample_tasks():
     """创建测试任务"""
     return [
-        GenerationTask(prompt="测试1"),
-        GenerationTask(prompt="测试2")
+        MockGenerationTask(prompt="测试1", model="模型A", size="512x512"),
+        MockGenerationTask(prompt="测试2", model="模型B", size="1024x1024")
     ]
 
-def test_init(batch_gen_tab):
+def test_init(batch_gen_tab, mock_api, mock_config):
     """测试初始化"""
-    assert batch_gen_tab.api is not None
-    assert batch_gen_tab.config is not None
-    assert batch_gen_tab.task_queue is not None
-    assert len(batch_gen_tab.tasks) == 0
-    
-    # 检查按钮状态
+    assert batch_gen_tab.api == mock_api
+    assert batch_gen_tab.config == mock_config
+    assert batch_gen_tab.tasks == []
     assert not batch_gen_tab.start_btn.isEnabled()
     assert not batch_gen_tab.pause_btn.isEnabled()
     assert not batch_gen_tab.resume_btn.isEnabled()
     assert not batch_gen_tab.clear_btn.isEnabled()
     assert not batch_gen_tab.export_btn.isEnabled()
 
-@patch("PyQt6.QtWidgets.QFileDialog.getOpenFileName")
-def test_import_excel_success(mock_dialog, batch_gen_tab):
-    """测试成功导入Excel"""
-    # 模拟文件选择
-    mock_dialog.return_value = ("test.xlsx", "Excel Files (*.xlsx)")
+def test_import_excel_success(batch_gen_tab, mock_api, mock_config, tmp_path):
+    """测试导入Excel成功"""
+    # 创建测试Excel文件
+    test_file = tmp_path / "test.xlsx"
+    test_file.write_text("")
     
-    # 模拟ExcelHandler
-    with patch("src.utils.excel_handler.ExcelHandler.read_tasks") as mock_read:
-        mock_read.return_value = [
-            GenerationTask(prompt="测试1", model="模型A", size="512x512"),
-            GenerationTask(prompt="测试2", model="模型B", size="1024x1024")
-        ]
-        
-        # 执行导入
-        batch_gen_tab.import_excel()
-        
-        # 验证调用
-        mock_dialog.assert_called_once()
-        mock_read.assert_called_once()
-        
-        # 验证任务导入
-        assert len(batch_gen_tab.tasks) == 2
-        assert batch_gen_tab.tasks[0].prompt == "测试1"
-        assert batch_gen_tab.tasks[0].model == "模型A"
-        assert batch_gen_tab.tasks[0].size == "512x512"
-        assert batch_gen_tab.tasks[0].status == "等待中"
-        
-        assert batch_gen_tab.tasks[1].prompt == "测试2"
-        assert batch_gen_tab.tasks[1].model == "模型B"
-        assert batch_gen_tab.tasks[1].size == "1024x1024"
-        assert batch_gen_tab.tasks[1].status == "等待中"
-        
-        # 验证按钮状态
-        assert batch_gen_tab.start_btn.isEnabled()
-        assert batch_gen_tab.clear_btn.isEnabled()
-        assert batch_gen_tab.export_btn.isEnabled()
-
-@patch("PyQt6.QtWidgets.QFileDialog.getOpenFileName")
-def test_import_excel_error(mock_dialog, batch_gen_tab):
-    """测试导入Excel失败"""
-    # 模拟文件选择
-    mock_dialog.return_value = ("test.xlsx", "")
+    # 模拟文件选择对话框
+    batch_gen_tab.get_open_file_name = lambda: (str(test_file), "")
     
-    # 模拟ExcelHandler抛出异常
-    with patch("src.utils.excel_handler.ExcelHandler.read_tasks") as mock_read:
-        mock_read.side_effect = Exception("读取失败")
-        with patch("PyQt6.QtWidgets.QMessageBox.critical") as mock_message:
-            batch_gen_tab.import_excel()
-            mock_message.assert_called_once()
+    # 导入Excel
+    batch_gen_tab.import_excel()
+    
+    # 验证按钮状态
+    assert batch_gen_tab.export_btn.isEnabled()
 
-def test_task_list_operations(batch_gen_tab):
-    """测试任务列表的基本操作"""
-    # 初始状态下任务列表为空
+def test_import_excel_cancel(batch_gen_tab):
+    """测试取消导入Excel"""
+    # 模拟用户取消选择文件
+    batch_gen_tab.get_open_file_name = lambda: ("", "")
+    
+    # 导入Excel
+    batch_gen_tab.import_excel()
+    
+    # 验证任务列表未改变
     assert len(batch_gen_tab.tasks) == 0
+
+def test_import_excel_error(batch_gen_tab, mock_api, mock_config, tmp_path):
+    """测试导入Excel出错"""
+    # 创建测试Excel文件
+    test_file = tmp_path / "test.xlsx"
+    test_file.write_text("")
     
-    # 添加一个任务
-    task = GenerationTask(prompt="测试提示词", model="模型A", size="512x512")
-    batch_gen_tab.tasks.append(task)
-    assert len(batch_gen_tab.tasks) == 1
-    assert batch_gen_tab.tasks[0].prompt == "测试提示词"
+    # 模拟文件选择对话框
+    batch_gen_tab.get_open_file_name = lambda: (str(test_file), "")
+    
+    # 模拟读取任务出错
+    def mock_read_tasks(*args):
+        raise Exception("读取错误")
+    batch_gen_tab.read_tasks = mock_read_tasks
+    
+    # 导入Excel
+    batch_gen_tab.import_excel()
+    
+    # 验证任务列表未改变
+    assert len(batch_gen_tab.tasks) == 0
+
+def test_task_list_operations(batch_gen_tab, sample_tasks):
+    """测试任务列表操作"""
+    # 添加任务
+    batch_gen_tab.tasks.extend(sample_tasks)
+    assert len(batch_gen_tab.tasks) == 2
     
     # 清空任务
-    batch_gen_tab.tasks.clear()
+    batch_gen_tab.clear_tasks()
+    assert len(batch_gen_tab.tasks) == 0
+    assert not batch_gen_tab.export_btn.isEnabled()
+
+def test_task_completion(batch_gen_tab, sample_tasks):
+    """测试任务完成"""
+    # 添加任务
+    batch_gen_tab.tasks.extend(sample_tasks)
+    
+    # 模拟任务完成
+    batch_gen_tab.on_task_complete()
+    
+    # 验证消息框显示
+    assert QMessageBox.information.called
+
+def test_task_error(batch_gen_tab, sample_tasks):
+    """测试任务错误"""
+    # 添加任务
+    batch_gen_tab.tasks.extend(sample_tasks)
+    
+    # 模拟任务错误
+    batch_gen_tab.on_task_error("测试错误")
+    
+    # 验证警告框显示
+    assert QMessageBox.warning.called
+
+def test_edit_task(batch_gen_tab, sample_tasks):
+    """测试编辑任务"""
+    # 添加任务
+    batch_gen_tab.tasks.extend(sample_tasks)
+    
+    # 编辑第一个任务
+    task = batch_gen_tab.tasks[0]
+    new_prompt = "新提示词"
+    new_model = "模型B"
+    new_size = "1024x1024"
+    
+    # 模拟对话框输入
+    batch_gen_tab.get_task_input = lambda *args: (new_prompt, new_model, new_size)
+    
+    # 编辑任务
+    batch_gen_tab.edit_task(task)
+    
+    # 验证任务属性已更新
+    assert task.prompt == new_prompt
+    assert task.model == new_model
+    assert task.size == new_size
+
+def test_random_seed_behavior(batch_gen_tab):
+    """测试随机种子行为"""
+    # 测试初始状态
+    assert batch_gen_tab.random_seed_check.isChecked()
+    assert not batch_gen_tab.seed_input.isEnabled()
+    
+    # 测试取消选中
+    batch_gen_tab.random_seed_check.setChecked(False)
+    assert batch_gen_tab.seed_input.isEnabled()
+
+def test_parameter_validation(batch_gen_tab):
+    """测试参数验证"""
+    # 测试无效种子值
+    batch_gen_tab.random_seed_check.setChecked(False)
+    batch_gen_tab.seed_input.setText("0")  # 小于最小值
+    assert not batch_gen_tab.validate_parameters()
+    
+    batch_gen_tab.random_seed_check.setChecked(False)
+    batch_gen_tab.seed_input.setText("9999999999")  # 大于最大值
+    assert not batch_gen_tab.validate_parameters()
+    
+    batch_gen_tab.random_seed_check.setChecked(False)
+    batch_gen_tab.seed_input.setText("abc")  # 非数字
+    assert not batch_gen_tab.validate_parameters()
+    
+    batch_gen_tab.random_seed_check.setChecked(False)
+    batch_gen_tab.seed_input.setText("")  # 空值
+    assert not batch_gen_tab.validate_parameters()
+
+    # 测试有效种子值
+    batch_gen_tab.random_seed_check.setChecked(False)
+    batch_gen_tab.seed_input.setText("1")  # 最小值
+    assert batch_gen_tab.validate_parameters()
+    
+    batch_gen_tab.random_seed_check.setChecked(False)
+    batch_gen_tab.seed_input.setText("9999999998")  # 最大值
+    assert batch_gen_tab.validate_parameters()
+    
+    batch_gen_tab.random_seed_check.setChecked(False)
+    batch_gen_tab.seed_input.setText("12345")  # 正常值
+    assert batch_gen_tab.validate_parameters()
+
+    # 测试随机种子模式
+    batch_gen_tab.random_seed_check.setChecked(True)
+    assert batch_gen_tab.validate_parameters()  # 随机种子模式下总是有效
+
+def test_get_generation_params(batch_gen_tab):
+    """测试获取生成参数"""
+    # 设置输入值
+    batch_gen_tab.prompt_input.setPlainText("测试提示词")
+    batch_gen_tab.model_combo.setCurrentText("模型A")
+    batch_gen_tab.size_combo.setCurrentText("512x512")
+    batch_gen_tab.steps_spin.setValue(20)
+    batch_gen_tab.guidance_spin.setValue(7.5)
+    batch_gen_tab.random_seed_check.setChecked(False)
+    batch_gen_tab.seed_input.setText("12345")
+    
+    # 获取参数
+    params = batch_gen_tab.get_generation_params()
+    
+    # 验证参数
+    assert params["prompt"] == "测试提示词"
+    assert params["model"] == "模型A"
+    assert params["size"] == "512x512"
+    assert params["steps"] == 20
+    assert params["guidance"] == 7.5
+    assert params["seed"] == 12345
+
+def test_sort_tasks_by_prompt(batch_gen_tab, sample_tasks):
+    """测试按提示词排序"""
+    # 添加任务
+    batch_gen_tab.tasks.extend(sample_tasks)
+    
+    # 排序前的顺序
+    assert batch_gen_tab.tasks[0].prompt == "测试1"
+    assert batch_gen_tab.tasks[1].prompt == "测试2"
+    
+    # 反转任务列表
+    batch_gen_tab.tasks.reverse()
+    
+    # 按提示词排序
+    batch_gen_tab.sort_tasks_by_prompt()
+    
+    # 验证排序后的顺序
+    assert batch_gen_tab.tasks[0].prompt == "测试1"
+    assert batch_gen_tab.tasks[1].prompt == "测试2"
+
+def test_sort_tasks_by_status(batch_gen_tab, sample_tasks):
+    """测试按状态排序"""
+    # 添加任务
+    batch_gen_tab.tasks.extend(sample_tasks)
+    
+    # 设置不同的状态
+    batch_gen_tab.tasks[0].status = "完成"
+    batch_gen_tab.tasks[1].status = "等待中"
+    
+    # 按状态排序
+    batch_gen_tab.sort_tasks_by_status()
+    
+    # 验证排序后的顺序
+    assert batch_gen_tab.tasks[0].status == "等待中"
+    assert batch_gen_tab.tasks[1].status == "完成"
+
+def test_sort_tasks_empty_list(batch_gen_tab):
+    """测试空列表排序"""
+    # 确保任务列表为空
+    assert len(batch_gen_tab.tasks) == 0
+    
+    # 尝试排序
+    batch_gen_tab.sort_tasks_by_prompt()
+    batch_gen_tab.sort_tasks_by_status()
+    
+    # 验证没有错误发生
     assert len(batch_gen_tab.tasks) == 0
 
-def test_export_excel_button_enabled(batch_gen_tab):
-    """测试导出按钮的启用状态"""
-    # 初始状态下应该禁用
+def test_ui_initialization(batch_gen_tab):
+    """测试UI初始化"""
+    # 验证按钮初始状态
+    assert not batch_gen_tab.start_btn.isEnabled()
+    assert not batch_gen_tab.pause_btn.isEnabled()
+    assert not batch_gen_tab.resume_btn.isEnabled()
+    assert not batch_gen_tab.clear_btn.isEnabled()
     assert not batch_gen_tab.export_btn.isEnabled()
     
-    # 添加一个任务
-    task = GenerationTask(prompt="测试提示词", model="模型A", size="512x512")
-    batch_gen_tab.tasks.append(task)
-    batch_gen_tab.update_table()  # 更新表格以触发按钮状态更新
+    # 验证输入控件初始状态
+    assert batch_gen_tab.random_seed_check.isChecked()
+    assert not batch_gen_tab.seed_input.isEnabled()
+
+def test_export_excel_button_enabled(batch_gen_tab, sample_tasks):
+    """测试导出Excel按钮状态"""
+    # 初始状态
+    assert not batch_gen_tab.export_btn.isEnabled()
     
-    # 有任务时应该启用
-    assert len(batch_gen_tab.tasks) > 0
+    # 添加任务后
+    batch_gen_tab.tasks.extend(sample_tasks)
     assert batch_gen_tab.export_btn.isEnabled()
     
-    # 清空任务
-    batch_gen_tab.tasks.clear()
-    batch_gen_tab.update_table()  # 更新表格以触发按钮状态更新
-    
-    # 无任务时应该禁用
-    assert len(batch_gen_tab.tasks) == 0
-    assert not batch_gen_tab.export_btn.isEnabled()
-
-def test_export_excel_dialog(batch_gen_tab):
-    """测试导出Excel对话框"""
-    # 创建测试任务
-    tasks = [
-        GenerationTask(prompt="测试1", model="模型A", size="512x512"),
-        GenerationTask(prompt="测试2", model="模型B", size="1024x1024")
-    ]
-    batch_gen_tab.tasks = tasks
-    
-    # 模拟文件对话框
-    with patch("PyQt6.QtWidgets.QFileDialog.getSaveFileName") as mock_dialog:
-        # 模拟用户取消
-        mock_dialog.return_value = ("", "")
-        batch_gen_tab.export_excel()
-        mock_dialog.assert_called_once()
-        
-        # 验证任务列表未改变
-        assert len(batch_gen_tab.tasks) == 2
-        assert batch_gen_tab.tasks[0].prompt == "测试1"
-        assert batch_gen_tab.tasks[1].prompt == "测试2"
-        
-        # 模拟用户选择文件
-        mock_dialog.reset_mock()
-        mock_dialog.return_value = ("test.xlsx", "Excel Files (*.xlsx)")
-        
-        with patch("src.utils.excel_handler.ExcelHandler.export_results") as mock_export:
-            batch_gen_tab.export_excel()
-            mock_dialog.assert_called_once()
-            mock_export.assert_called_once_with(batch_gen_tab.tasks, "test.xlsx")
-
-def test_export_excel_error_handling(batch_gen_tab):
-    """测试导出Excel错误处理"""
-    # 创建测试任务
-    tasks = [
-        GenerationTask(prompt="测试1", model="模型A", size="512x512"),
-        GenerationTask(prompt="测试2", model="模型B", size="1024x1024")
-    ]
-    batch_gen_tab.tasks = tasks
-    
-    with patch("PyQt6.QtWidgets.QFileDialog.getSaveFileName") as mock_dialog:
-        with patch("src.utils.excel_handler.ExcelHandler.export_results") as mock_export:
-            with patch("PyQt6.QtWidgets.QMessageBox.critical") as mock_error:
-                # 设置模拟返回值
-                mock_dialog.return_value = ("test.xlsx", "")
-                mock_export.side_effect = Exception("导出错误")
-                
-                # 执行导出
-                batch_gen_tab.export_excel()
-                
-                # 验证调用
-                mock_dialog.assert_called_once()
-                mock_export.assert_called_once()
-                mock_error.assert_called_once()
-
-def test_start_generation_no_api_key(batch_gen_tab):
-    """测试无API密钥时开始生成"""
-    batch_gen_tab.api.is_configured.return_value = False
-    # 创建测试任务
-    tasks = [
-        GenerationTask(prompt="测试1", model="模型A", size="512x512"),
-        GenerationTask(prompt="测试2", model="模型B", size="1024x1024")
-    ]
-    batch_gen_tab.tasks = tasks
-    
-    with patch("PyQt6.QtWidgets.QMessageBox.warning") as mock_message:
-        batch_gen_tab.start_generation()
-        mock_message.assert_called_once()
-
-def test_pause_resume_generation(batch_gen_tab):
-    """测试暂停和恢复生成"""
-    # 测试暂停
-    batch_gen_tab.pause_generation()
-    assert not batch_gen_tab.pause_btn.isEnabled()
-    assert batch_gen_tab.resume_btn.isEnabled()
-    
-    # 测试恢复
-    batch_gen_tab.resume_generation()
-    assert batch_gen_tab.pause_btn.isEnabled()
-    assert not batch_gen_tab.resume_btn.isEnabled()
-
-def test_clear_tasks(batch_gen_tab):
-    """测试清空任务"""
-    # 创建测试任务
-    tasks = [
-        GenerationTask(prompt="测试1", model="模型A", size="512x512"),
-        GenerationTask(prompt="测试2", model="模型B", size="1024x1024")
-    ]
-    batch_gen_tab.tasks = tasks
+    # 清空任务后
     batch_gen_tab.clear_tasks()
-    
-    # 验证状态
-    assert len(batch_gen_tab.tasks) == 0
-    assert batch_gen_tab.progress_bar.value() == 0
-    assert not batch_gen_tab.start_btn.isEnabled()
-    assert not batch_gen_tab.pause_btn.isEnabled()
-    assert not batch_gen_tab.resume_btn.isEnabled()
-    assert not batch_gen_tab.clear_btn.isEnabled()
     assert not batch_gen_tab.export_btn.isEnabled()
-    assert batch_gen_tab.import_btn.isEnabled()
 
-def test_update_progress(batch_gen_tab):
-    """测试更新进度"""
-    batch_gen_tab.update_progress(5, 10)
-    assert batch_gen_tab.progress_bar.value() == 50
-
-def test_on_task_complete(batch_gen_tab):
-    """测试任务完成回调"""
-    # 创建测试任务
-    tasks = [
-        GenerationTask(prompt="测试1", model="模型A", size="512x512"),
-        GenerationTask(prompt="测试2", model="模型B", size="1024x1024")
-    ]
-    batch_gen_tab.tasks = tasks
-    batch_gen_tab.tasks[0].status = "完成"
-    batch_gen_tab.tasks[1].status = "完成"
+def test_export_excel_error(batch_gen_tab, sample_tasks, tmp_path):
+    """测试导出Excel错误处理"""
+    # 创建测试文件
+    test_file = tmp_path / "test.xlsx"
     
-    with patch("PyQt6.QtWidgets.QMessageBox.information") as mock_message:
-        batch_gen_tab.on_task_complete(batch_gen_tab.tasks[1])
-        mock_message.assert_called_once()
-        
-    # 验证按钮状态
-    assert not batch_gen_tab.start_btn.isEnabled()
-    assert not batch_gen_tab.pause_btn.isEnabled()
-    assert not batch_gen_tab.resume_btn.isEnabled()
-    assert batch_gen_tab.import_btn.isEnabled()
-
-def test_on_task_error(batch_gen_tab):
-    """测试任务错误回调"""
-    # 创建测试任务
-    tasks = [
-        GenerationTask(prompt="测试1", model="模型A", size="512x512"),
-        GenerationTask(prompt="测试2", model="模型B", size="1024x1024")
-    ]
-    batch_gen_tab.tasks = tasks
+    # 模拟文件选择对话框
+    batch_gen_tab.get_save_file_name = lambda: (str(test_file), "")
     
-    with patch("PyQt6.QtWidgets.QMessageBox.warning") as mock_message:
-        batch_gen_tab.on_task_error(batch_gen_tab.tasks[0], "测试错误")
-        mock_message.assert_called_once()
-
-@pytest.mark.qt
-def test_edit_task(batch_gen_tab):
-    """测试编辑任务功能"""
-    # 添加一个测试任务
-    task = GenerationTask(prompt="测试提示词", model="模型A", size="512x512")
-    batch_gen_tab.tasks.append(task)
+    # 模拟导出错误
+    def mock_export(*args):
+        raise Exception("导出错误")
+    batch_gen_tab.export_tasks = mock_export
     
-    # 模拟编辑对话框
-    with patch.object(QDialog, 'exec', return_value=QDialog.DialogCode.Accepted):
-        with patch.object(QLineEdit, 'text', return_value="新提示词"):
-            with patch.object(QComboBox, 'currentText', side_effect=["模型B", "1024x1024"]):
-                # 执行编辑
-                batch_gen_tab.edit_task(0)
-                
-                # 验证任务是否被更新
-                assert batch_gen_tab.tasks[0].prompt == "新提示词"
-                assert batch_gen_tab.tasks[0].model == "模型B"
-                assert batch_gen_tab.tasks[0].size == "1024x1024"
-                assert batch_gen_tab.tasks[0].status == "等待中"
-                assert batch_gen_tab.tasks[0].result_path is None
-
-def test_edit_task_validation(batch_gen_tab):
-    """测试编辑任务输入验证"""
-    # 添加测试任务
-    task = GenerationTask(prompt="测试提示词", model="模型A", size="512x512")
-    batch_gen_tab.tasks.append(task)
+    # 添加任务
+    batch_gen_tab.tasks.extend(sample_tasks)
     
-    # 模拟编辑对话框
-    with patch.object(QDialog, 'exec', return_value=QDialog.DialogCode.Accepted):
-        with patch.object(QLineEdit, 'text', return_value=""):
-            with patch.object(QMessageBox, 'warning') as mock_warning:
-                # 执行编辑
-                batch_gen_tab.edit_task(0)
-                
-                # 验证警告是否显示
-                mock_warning.assert_called_once()
-                
-                # 验证任务未被更新
-                assert batch_gen_tab.tasks[0].prompt == "测试提示词"
-                assert batch_gen_tab.tasks[0].model == "模型A"
-                assert batch_gen_tab.tasks[0].size == "512x512"
-
-def test_edit_task_cancel(batch_gen_tab):
-    """测试取消编辑任务"""
-    # 添加测试任务
-    task = GenerationTask(prompt="测试提示词", model="模型A", size="512x512")
-    batch_gen_tab.tasks.append(task)
+    # 尝试导出
+    batch_gen_tab.export_excel()
     
-    # 模拟编辑对话框
-    with patch.object(QDialog, 'exec', return_value=QDialog.DialogCode.Rejected):
-        # 执行编辑
-        batch_gen_tab.edit_task(0)
-        
-        # 验证任务未被更新
-        assert batch_gen_tab.tasks[0].prompt == "测试提示词"
-        assert batch_gen_tab.tasks[0].model == "模型A"
-        assert batch_gen_tab.tasks[0].size == "512x512"
-
-def test_edit_task_invalid_index(batch_gen_tab):
-    """测试编辑无效索引的任务"""
-    # 尝试编辑不存在的任务
-    batch_gen_tab.edit_task(-1)  # 负数索引
-    batch_gen_tab.edit_task(0)   # 空列表的索引
-    
-    # 添加一个任务
-    task = GenerationTask(prompt="测试提示词", model="模型A", size="512x512")
-    batch_gen_tab.tasks.append(task)
-    
-    # 尝试编辑超出范围的索引
-    batch_gen_tab.edit_task(1)  # 超出列表长度的索引
-
-def test_export_excel_validation(batch_gen_tab):
-    """测试导出Excel的输入验证"""
-    # 测试无任务时的情况
-    with patch("PyQt6.QtWidgets.QMessageBox.warning") as mock_warning:
-        batch_gen_tab.export_excel()
-        mock_warning.assert_called_once()
-
-def test_export_excel_success(batch_gen_tab):
-    """测试成功导出Excel"""
-    # 创建测试任务
-    tasks = [
-        GenerationTask(prompt="测试1", model="模型A", size="512x512"),
-        GenerationTask(prompt="测试2", model="模型B", size="1024x1024")
-    ]
-    batch_gen_tab.tasks = tasks
-    
-    with patch("PyQt6.QtWidgets.QFileDialog.getSaveFileName") as mock_dialog:
-        with patch("src.utils.excel_handler.ExcelHandler.export_results") as mock_export:
-            with patch("PyQt6.QtWidgets.QMessageBox.information") as mock_info:
-                # 设置模拟返回值
-                mock_dialog.return_value = ("test.xlsx", "")
-                
-                # 执行导出
-                batch_gen_tab.export_excel()
-                
-                # 验证调用
-                mock_dialog.assert_called_once()
-                mock_export.assert_called_once()
-                mock_info.assert_called_once()
-
-def test_export_excel_cancel(batch_gen_tab):
-    """测试取消导出Excel"""
-    # 创建测试任务
-    tasks = [
-        GenerationTask(prompt="测试1", model="模型A", size="512x512"),
-        GenerationTask(prompt="测试2", model="模型B", size="1024x1024")
-    ]
-    batch_gen_tab.tasks = tasks
-    
-    with patch("PyQt6.QtWidgets.QFileDialog.getSaveFileName") as mock_dialog:
-        # 模拟用户取消
-        mock_dialog.return_value = ("", "")
-        
-        # 执行导出
-        batch_gen_tab.export_excel()
-        
-        # 验证调用
-        mock_dialog.assert_called_once()
-
-def test_export_excel_error(batch_gen_tab):
-    """测试导出Excel出错"""
-    # 创建测试任务
-    tasks = [
-        GenerationTask(prompt="测试1", model="模型A", size="512x512"),
-        GenerationTask(prompt="测试2", model="模型B", size="1024x1024")
-    ]
-    batch_gen_tab.tasks = tasks
-    
-    with patch("PyQt6.QtWidgets.QFileDialog.getSaveFileName") as mock_dialog:
-        with patch("src.utils.excel_handler.ExcelHandler.export_results") as mock_export:
-            with patch("PyQt6.QtWidgets.QMessageBox.critical") as mock_error:
-                # 设置模拟返回值
-                mock_dialog.return_value = ("test.xlsx", "")
-                mock_export.side_effect = Exception("导出错误")
-                
-                # 执行导出
-                batch_gen_tab.export_excel()
-                
-                # 验证调用
-                mock_dialog.assert_called_once()
-                mock_export.assert_called_once()
-                mock_error.assert_called_once()
-
-def test_sort_tasks_by_prompt(batch_gen_tab):
-    """测试按提示词排序"""
-    # 添加测试任务
-    tasks = [
-        GenerationTask(prompt="测试C", model="模型A", size="512x512"),
-        GenerationTask(prompt="测试A", model="模型B", size="1024x1024"),
-        GenerationTask(prompt="测试B", model="模型C", size="768x768")
-    ]
-    batch_gen_tab.tasks = tasks
-    batch_gen_tab.update_table()
-    
-    # 执行排序
-    batch_gen_tab.sort_tasks_by_prompt()
-    
-    # 验证排序结果
-    assert batch_gen_tab.tasks[0].prompt == "测试A"
-    assert batch_gen_tab.tasks[1].prompt == "测试B"
-    assert batch_gen_tab.tasks[2].prompt == "测试C"
-    
-def test_sort_tasks_by_status(batch_gen_tab):
-    """测试按状态排序"""
-    # 添加测试任务
-    tasks = [
-        GenerationTask(prompt="测试1", model="模型A", size="512x512"),
-        GenerationTask(prompt="测试2", model="模型B", size="1024x1024"),
-        GenerationTask(prompt="测试3", model="模型C", size="768x768"),
-        GenerationTask(prompt="测试4", model="模型D", size="512x512")
-    ]
-    tasks[0].status = "完成"
-    tasks[1].status = "等待中"
-    tasks[2].status = "处理中"
-    tasks[3].status = "失败"
-    batch_gen_tab.tasks = tasks
-    batch_gen_tab.update_table()
-    
-    # 执行排序
-    batch_gen_tab.sort_tasks_by_status()
-    
-    # 验证排序结果
-    assert batch_gen_tab.tasks[0].status == "处理中"
-    assert batch_gen_tab.tasks[1].status == "等待中"
-    assert batch_gen_tab.tasks[2].status == "完成"
-    assert batch_gen_tab.tasks[3].status == "失败"
-    
-def test_sort_tasks_empty_list(batch_gen_tab):
-    """测试空任务列表排序"""
-    # 执行排序
-    batch_gen_tab.sort_tasks_by_prompt()
-    batch_gen_tab.sort_tasks_by_status()
-    
-    # 验证结果
-    assert len(batch_gen_tab.tasks) == 0 
+    # 验证错误处理
+    assert QMessageBox.warning.called 

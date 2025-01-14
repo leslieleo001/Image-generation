@@ -9,7 +9,9 @@ from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QTextEdit,
     QComboBox, QSpinBox, QDoubleSpinBox, QCheckBox,
     QPushButton, QListWidget, QListWidgetItem, QMessageBox,
-    QScrollArea, QApplication, QFileDialog, QProgressBar
+    QScrollArea, QApplication, QFileDialog, QProgressBar,
+    QLineEdit, QFormLayout, QDialog, QDialogButtonBox,
+    QTableWidget, QTableWidgetItem, QHeaderView, QGroupBox
 )
 from PyQt6.QtCore import Qt, QSize, QThread, pyqtSignal
 from PyQt6.QtGui import QPixmap, QIcon
@@ -23,7 +25,7 @@ class BatchGenerationThread(QThread):
     """批量生成线程"""
     progress = pyqtSignal(str)  # 进度信号
     error = pyqtSignal(str)     # 错误信号
-    success = pyqtSignal(list)  # 成功信号，传递保存的文件列表
+    finished = pyqtSignal(list)  # 完成信号，传递生成的文件列表
     
     def __init__(self, api, prompts, params, save_dir, naming_rule):
         super().__init__()
@@ -32,553 +34,587 @@ class BatchGenerationThread(QThread):
         self.params = params
         self.save_dir = save_dir
         self.naming_rule = naming_rule
-        
+        self.is_running = True
+    
     def run(self):
         try:
             saved_files = []
             total = len(self.prompts)
             
             for i, prompt in enumerate(self.prompts, 1):
-                self.progress.emit(f"正在处理第 {i}/{total} 个提示词: {prompt}")
-                
-                # 生成随机种子
+                if not self.is_running:
+                    break
+                    
+                # 生成随机种子列表
                 if self.params["seed"] == -1:
-                    current_seed = random.randint(0, 2147483647)
+                    seeds = [random.randint(1, 9999999998) for _ in range(self.params["batch_size"])]
                 else:
-                    current_seed = self.params["seed"]
+                    seeds = [self.params["seed"]] * self.params["batch_size"]
+                
+                self.progress.emit(f"=== 处理第 {i}/{total} 个提示词 ===")
+                self.progress.emit(f"• 提示词: {prompt}")
+                self.progress.emit(f"• 使用模型: {self.params['model']}")
+                self.progress.emit(f"• 图片尺寸: {self.params['size']}")
+                self.progress.emit(f"• 生成步数: {self.params['steps']}")
+                self.progress.emit(f"• 引导系数: {self.params['guidance']}")
+                self.progress.emit(f"• 使用的种子值: {', '.join(map(str, seeds))}")
+                self.progress.emit("=== 调用API ===")
                 
                 # 调用API生成图片
                 result = self.api.generate_image(
                     prompt=prompt,
                     model=self.params["model"],
                     negative_prompt=self.params["negative_prompt"],
-                    size=self.params["image_size"],
-                    batch_size=1,
-                    num_inference_steps=self.params["num_inference_steps"],
-                    guidance_scale=self.params["guidance_scale"],
-                    prompt_enhancement=self.params["enhance_prompt"],
-                    seed=current_seed
+                    size=self.params["size"],
+                    batch_size=self.params["batch_size"],
+                    num_inference_steps=self.params["steps"],
+                    guidance_scale=self.params["guidance"],
+                    prompt_enhancement=False,
+                    seeds=seeds
                 )
+                
+                # 显示推理时间
+                if isinstance(result, dict) and "timings" in result:
+                    inference_time = result["timings"].get("inference", 0)
+                    self.progress.emit(f"• 推理完成，耗时: {inference_time:.2f}秒")
                 
                 if not result:
                     self.error.emit(f"第{i}个提示词生成失败: API返回为空")
                     continue
                 
                 # 检查返回的数据结构
-                if "data" in result:
-                    images = result["data"]
-                elif "images" in result:
-                    images = result["images"]
+                if isinstance(result, dict):
+                    if "data" in result:
+                        images = result["data"]
+                    elif "images" in result:
+                        images = result["images"]
+                    else:
+                        self.error.emit(f"第{i}个提示词数据格式错误")
+                        continue
                 else:
-                    self.error.emit(f"第{i}个提示词数据格式错误")
-                    continue
+                    images = result  # 如果result直接就是图片列表
                 
                 if not images:
                     self.error.emit(f"第{i}个提示词未获取到数据")
                     continue
                 
-                # 处理图片
-                for img_info in images:
+                # 保存生成的图片
+                for j, image_data in enumerate(images):
+                    if not self.is_running:
+                        break
+                        
                     try:
-                        img_url = img_info.get("url")
-                        if not img_url:
-                            self.error.emit("图片URL为空")
+                        # 获取图片URL
+                        image_url = image_data["url"] if isinstance(image_data, dict) else image_data
+                        if not image_url:
+                            self.error.emit(f"第{i}个提示词的第{j+1}张图片URL为空")
                             continue
                         
-                        self.progress.emit(f"正在下载第 {i}/{total} 张图片...")
-                        
-                        # 下载图片
-                        response = requests.get(img_url, timeout=30)
+                        # 下载并保存图片
+                        response = requests.get(image_url)
                         if response.status_code != 200:
-                            self.error.emit(f"图片下载失败, 状态码: {response.status_code}")
+                            self.error.emit(f"第{i}个提示词的第{j+1}张图片下载失败")
                             continue
                         
                         # 生成文件名
-                        timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+                        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
                         date = datetime.now().strftime('%Y%m%d')
                         time = datetime.now().strftime('%H%M%S')
-                        short_prompt = prompt[:20].replace(" ", "_")
                         
-                        # 替换命名规则中的变量
-                        file_name = self.naming_rule
-                        file_name = file_name.replace("{timestamp}", timestamp)
-                        file_name = file_name.replace("{date}", date)
-                        file_name = file_name.replace("{time}", time)
-                        file_name = file_name.replace("{prompt}", short_prompt)
-                        file_name = file_name.replace("{model}", self.params["model"].split("/")[-1])
-                        file_name = file_name.replace("{seed}", str(current_seed))
-                        file_name = file_name.replace("{index}", str(i))
-                        file_name = file_name.replace("{size}", self.params["image_size"])
+                        # 处理命名规则
+                        filename = str(self.naming_rule)  # 确保是字符串
+                        replacements = {
+                            "{timestamp}": timestamp,
+                            "{date}": date,
+                            "{time}": time,
+                            "{prompt}": prompt[:50].replace(" ", "_"),
+                            "{model}": self.params["model"].split("/")[-1],
+                            "{size}": self.params["size"],
+                            "{seed}": str(seeds[j]),
+                            "{index}": f"{j+1:02d}"
+                        }
                         
-                        # 添加文件扩展名
-                        file_name = f"{file_name}.png"
-                        file_path = os.path.join(self.save_dir, file_name)
+                        # 应用替换
+                        for key, value in replacements.items():
+                            filename = filename.replace(key, value)
                         
-                        self.progress.emit(f"正在保存第 {i}/{total} 张图片...")
+                        # 确保文件名合法
+                        filename = "".join(c for c in filename if c.isalnum() or c in "._- ")
+                        filename = f"{filename}.png"
                         
                         # 保存图片
-                        with open(file_path, "wb") as f:
+                        filepath = os.path.join(self.save_dir, filename)
+                        with open(filepath, "wb") as f:
                             f.write(response.content)
-                        saved_files.append((file_path, current_seed, prompt))
+                        
+                        saved_files.append(filepath)
+                        
+                        self.progress.emit(f"• 正在下载第 {j+1}/{len(images)} 张图片")
+                        self.progress.emit(f"  - 种子值: {seeds[j]}")
+                        self.progress.emit(f"  - 提示词: {prompt[:50]}...")
+                        self.progress.emit(f"• 正在保存图片")
+                        self.progress.emit(f"  - 保存路径: {filepath}")
                         
                     except Exception as e:
-                        self.error.emit(f"处理图片时出错: {str(e)}")
+                        self.error.emit(f"保存第{i}个提示词的第{j+1}张图片时出错: {str(e)}")
                         continue
             
-            if not saved_files:
-                self.error.emit("生成失败: 所有图片保存失败")
-            else:
-                self.success.emit(saved_files)
-                
+            self.finished.emit(saved_files)
+            
         except Exception as e:
-            self.error.emit(str(e))
+            self.error.emit(f"批量生成过程出错: {str(e)}")
+            self.finished.emit([])
+    
+    def stop(self):
+        """停止生成"""
+        self.is_running = False
 
 class BatchGenTab(QWidget):
     """批量生成标签页"""
     
-    def __init__(self, config, api_manager):
+    def __init__(self, api_manager, config_manager):
         super().__init__()
-        self.config = config
         self.api_manager = api_manager
+        self.config_manager = config_manager
+        self.tasks = []
         
-        # 初始化历史记录管理器
-        self.history_manager = HistoryManager()
-        # 连接历史记录更新信号
-        self.history_manager.history_updated.connect(self.load_history)
+        # 创建按钮
+        self.start_btn = QPushButton("开始生成")
+        self.pause_btn = QPushButton("暂停")
+        self.resume_btn = QPushButton("继续")
+        self.clear_btn = QPushButton("清空任务")
+        self.import_btn = QPushButton("导入Excel参数")
+        self.template_btn = QPushButton("下载参数模板")
+        self.history_btn = QPushButton("历史记录")
+        
+        # 设置按钮初始状态
+        self.start_btn.setEnabled(False)
+        self.pause_btn.setEnabled(False)
+        self.resume_btn.setEnabled(False)
+        self.clear_btn.setEnabled(False)
+        
+        # 连接按钮点击事件
+        self.start_btn.clicked.connect(self.on_generate_clicked)
+        self.pause_btn.clicked.connect(self.pause_generation)
+        self.resume_btn.clicked.connect(self.resume_generation)
+        self.clear_btn.clicked.connect(self.clear_tasks)
+        self.import_btn.clicked.connect(self.import_excel)
+        self.template_btn.clicked.connect(self.download_template)
+        self.history_btn.clicked.connect(self.show_history)
         
         # 初始化界面
         self.init_ui()
+    
+    def update_progress_text(self, text):
+        """更新进度文本"""
+        self.progress_text.append(text)
+        # 滚动到底部
+        scrollbar = self.progress_text.verticalScrollBar()
+        scrollbar.setValue(scrollbar.maximum())
+    
+    def on_generation_error(self, error_msg):
+        """处理生成错误"""
+        QMessageBox.warning(self, "错误", error_msg)
+        # 恢复界面状态
+        self.start_btn.setEnabled(True)
+        self.pause_btn.setEnabled(False)
+        self.resume_btn.setEnabled(False)
+        self.clear_btn.setEnabled(True)
+        self.import_btn.setEnabled(True)
+    
+    def on_generation_finished(self, saved_files):
+        """处理生成完成"""
+        # 更新界面状态
+        self.start_btn.setEnabled(True)
+        self.pause_btn.setEnabled(False)
+        self.resume_btn.setEnabled(False)
+        self.clear_btn.setEnabled(True)
+        self.import_btn.setEnabled(True)
         
+        if saved_files:
+            self.update_progress_text(f"\n生成完成，已保存{len(saved_files)}张图片")
+            QMessageBox.information(self, "提示", f"生成完成，已保存{len(saved_files)}张图片")
+            
+            # 添加到历史记录
+            for file_path in saved_files:
+                try:
+                    # 从文件名解析参数
+                    filename = os.path.basename(file_path)
+                    parts = filename.split("_")
+                    if len(parts) >= 5:  # 确保文件名包含足够的部分
+                        timestamp = parts[0]
+                        prompt = parts[1]
+                        model = parts[2]
+                        size = parts[3]
+                        seed = int(parts[4].split(".")[0])  # 移除文件扩展名
+                        
+                        # 从任务列表中找到对应的任务
+                        task = next((t for t in self.tasks if t["prompt"] == prompt), None)
+                        if task:
+                            history_item = {
+                                "timestamp": datetime.now().isoformat(),
+                                "prompt": prompt,
+                                "negative_prompt": task["negative_prompt"],
+                                "model": model,
+                                "size": size,
+                                "steps": task["steps"],
+                                "guidance": task["guidance"],
+                                "batch_size": task["batch_size"],
+                                "seed": seed,
+                                "file_path": file_path
+                            }
+                            
+                            # 获取当前历史记录
+                            history = self.config_manager.get("history", [])
+                            if not isinstance(history, list):
+                                history = []
+                            
+                            # 添加新记录
+                            history.append(history_item)
+                            
+                            # 保存更新后的历史记录
+                            self.config_manager.set("history", history)
+                            self.config_manager.save()
+                        
+                except Exception as e:
+                    print(f"处理历史记录时出错: {str(e)}")
+                    continue
+
     def init_ui(self):
         """初始化界面"""
         layout = QHBoxLayout()
         
-        # 左侧面板 - 参数设置
+        # 左侧面板 - 基本控制
         left_panel = QWidget()
         left_layout = QVBoxLayout()
         
-        # 提示词输入
-        prompt_label = QLabel("提示词列表:")
-        self.prompt_input = QTextEdit()
-        self.prompt_input.setPlaceholderText("每行一个提示词...")
+        # Excel操作按钮
+        excel_group = QGroupBox("Excel操作")
+        excel_layout = QVBoxLayout()
+        excel_layout.addWidget(self.import_btn)
+        excel_layout.addWidget(self.template_btn)
+        excel_layout.addWidget(self.history_btn)
+        excel_group.setLayout(excel_layout)
         
-        # 负面提示词输入
-        negative_label = QLabel("负面提示词:")
-        self.negative_input = QTextEdit()
-        self.negative_input.setPlaceholderText("请输入负面提示词...")
-        self.negative_input.setMaximumHeight(100)
+        # 生成控制按钮
+        control_group = QGroupBox("生成控制")
+        control_layout = QVBoxLayout()
+        control_layout.addWidget(self.start_btn)
+        control_layout.addWidget(self.pause_btn)
+        control_layout.addWidget(self.resume_btn)
+        control_layout.addWidget(self.clear_btn)
+        control_group.setLayout(control_layout)
         
-        # 获取默认值
-        defaults = self.config.get("defaults", {})
-        
-        # 模型选择
-        model_label = QLabel("模型:")
-        self.model_combo = QComboBox()
-        self.model_combo.addItems([
-            "stabilityai/stable-diffusion-3-5-large",
-            "stabilityai/stable-diffusion-3-medium", 
-            "stabilityai/stable-diffusion-3-5-large-turbo"
-        ])
-        # 设置默认模型
-        default_model = defaults.get("model", "stabilityai/stable-diffusion-3-5-large")
-        index = self.model_combo.findText(default_model)
-        if index >= 0:
-            self.model_combo.setCurrentIndex(index)
-        
-        # 图片尺寸选择
-        size_label = QLabel("尺寸:")
-        self.size_combo = QComboBox()
-        self.size_combo.addItems([
-            "1024x1024",
-            "512x1024",
-            "768x512",
-            "768x1024",
-            "1024x576",
-            "576x1024"
-        ])
-        # 设置默认尺寸
-        default_size = defaults.get("size", "1024x1024")
-        index = self.size_combo.findText(default_size)
-        if index >= 0:
-            self.size_combo.setCurrentIndex(index)
-        
-        # 生成步数
-        steps_label = QLabel("步数:")
-        self.steps_spin = QSpinBox()
-        self.steps_spin.setRange(1, 50)
-        self.steps_spin.setValue(defaults.get("steps", 20))
-        self.steps_spin.setToolTip("turbo模型固定为4步")
-        
-        # 引导系数
-        guidance_label = QLabel("引导系数:")
-        self.guidance_spin = QDoubleSpinBox()
-        self.guidance_spin.setRange(0, 20)
-        self.guidance_spin.setValue(defaults.get("guidance", 7.5))
-        self.guidance_spin.setSingleStep(0.5)
-        
-        # 随机种子
-        seed_label = QLabel("种子:")
-        self.seed_spin = QSpinBox()
-        self.seed_spin.setRange(-1, 2147483647)
-        self.seed_spin.setValue(defaults.get("seed", -1))
-        self.seed_spin.setToolTip("-1表示每次生成使用不同的随机种子，0-2147483647为固定种子值")
-        
-        # 添加随机种子按钮
-        seed_layout = QHBoxLayout()
-        seed_layout.addWidget(seed_label)
-        seed_layout.addWidget(self.seed_spin)
-        randomize_btn = QPushButton("随机")
-        randomize_btn.setMaximumWidth(60)
-        randomize_btn.clicked.connect(self.randomize_seed)
-        seed_layout.addWidget(randomize_btn)
-        
-        # 提示增强
-        self.enhance_check = QCheckBox("提示增强")
-        self.enhance_check.setToolTip("启用后将优化提示词以提高生成质量")
-        
-        # 导入提示词按钮
-        import_btn = QPushButton("导入提示词")
-        import_btn.clicked.connect(self.import_prompts)
-        
-        # 生成按钮
-        self.generate_btn = QPushButton("批量生成")
-        self.generate_btn.clicked.connect(self.on_generate_clicked)
-        
-        # 进度条
-        self.progress_bar = QProgressBar()
-        self.progress_bar.setTextVisible(True)
-        self.progress_bar.hide()
-        
-        # 进度标签
-        self.progress_label = QLabel("")
-        
-        # 添加控件到左侧面板
-        left_layout.addWidget(prompt_label)
-        left_layout.addWidget(self.prompt_input)
-        left_layout.addWidget(negative_label)
-        left_layout.addWidget(self.negative_input)
-        left_layout.addWidget(model_label)
-        left_layout.addWidget(self.model_combo)
-        left_layout.addWidget(size_label)
-        left_layout.addWidget(self.size_combo)
-        left_layout.addWidget(steps_label)
-        left_layout.addWidget(self.steps_spin)
-        left_layout.addWidget(guidance_label)
-        left_layout.addWidget(self.guidance_spin)
-        left_layout.addLayout(seed_layout)
-        left_layout.addWidget(self.enhance_check)
-        left_layout.addWidget(import_btn)
-        left_layout.addWidget(self.generate_btn)
-        left_layout.addWidget(self.progress_bar)
-        left_layout.addWidget(self.progress_label)
+        # 添加到左侧布局
+        left_layout.addWidget(excel_group)
+        left_layout.addWidget(control_group)
         left_layout.addStretch()
         left_panel.setLayout(left_layout)
         
-        # 右侧面板 - 历史记录
+        # 右侧面板 - 任务列表和进度
         right_panel = QWidget()
         right_layout = QVBoxLayout()
         
-        # 历史记录标题
-        history_label = QLabel("历史记录")
+        # 任务列表
+        task_group = QGroupBox("任务列表")
+        task_layout = QVBoxLayout()
+        self.task_list = QListWidget()
+        task_layout.addWidget(self.task_list)
+        task_group.setLayout(task_layout)
         
-        # 历史记录列表
-        self.history_list = QListWidget()
-        self.history_list.setIconSize(QSize(80, 80))
-        self.history_list.setSpacing(5)
-        self.history_list.itemDoubleClicked.connect(self.on_history_item_double_clicked)
+        # 进度显示
+        progress_group = QGroupBox("生成进度")
+        progress_layout = QVBoxLayout()
+        self.progress_text = QTextEdit()
+        self.progress_text.setReadOnly(True)
+        progress_layout.addWidget(self.progress_text)
+        progress_group.setLayout(progress_layout)
         
-        # 清空历史按钮
-        clear_history_btn = QPushButton("清空历史")
-        clear_history_btn.clicked.connect(self.on_clear_history_clicked)
-        
-        right_layout.addWidget(history_label)
-        right_layout.addWidget(self.history_list)
-        right_layout.addWidget(clear_history_btn)
+        right_layout.addWidget(task_group, 2)  # 任务列表占2份
+        right_layout.addWidget(progress_group, 1)  # 进度显示占1份
         right_panel.setLayout(right_layout)
         
-        # 设置布局
-        layout.addWidget(left_panel, stretch=2)
-        layout.addWidget(right_panel, stretch=1)
+        # 设置左右面板的比例
+        layout.addWidget(left_panel, 1)  # 左侧面板占1份
+        layout.addWidget(right_panel, 3)  # 右侧面板占3份
+        
         self.setLayout(layout)
-        
-        # 加载历史记录
-        self.load_history()
-        
-        # 连接模型选择变更事件
-        self.model_combo.currentTextChanged.connect(self.on_model_changed)
-        
-    def import_prompts(self):
-        """导入提示词"""
-        file_path, _ = QFileDialog.getOpenFileName(
+
+    def download_template(self):
+        """下载Excel参数模板"""
+        filename, _ = QFileDialog.getSaveFileName(
             self,
-            "选择文件",
-            "",
-            "文本文件 (*.txt);;Excel文件 (*.xlsx *.xls);;所有文件 (*.*)"
+            "保存模板",
+            "batch_generation_template.xlsx",
+            "Excel Files (*.xlsx)"
         )
         
-        if not file_path:
-            return
-            
+        if filename:
+            try:
+                # 获取默认参数
+                defaults = self.config_manager.get("defaults", {})
+                
+                # 创建示例数据
+                data = {
+                    "prompt": ["1girl, beautiful", "1boy, handsome"],
+                    "negative_prompt": [defaults.get("negative_prompt", "")] * 2,
+                    "model": [defaults.get("model", "stabilityai/stable-diffusion-3-5-large")] * 2,
+                    "size": [defaults.get("size", "1024x1024")] * 2,
+                    "steps": [defaults.get("steps", 20)] * 2,
+                    "guidance": [defaults.get("guidance", 7.5)] * 2,
+                    "batch_size": [defaults.get("batch_size", 1)] * 2,
+                    "seed": ["", ""],  # 留空表示使用随机种子
+                    "enhance_prompt": [defaults.get("enhance_prompt", False)] * 2
+                }
+                
+                df = pd.DataFrame(data)
+                df.to_excel(filename, index=False)
+                
+                QMessageBox.information(self, "成功", "模板已下载，你可以按照模板格式填写参数。\n注意：种子值留空表示使用随机种子，或填入1-9999999998之间的整数作为固定种子值。")
+            except Exception as e:
+                QMessageBox.warning(self, "错误", f"下载模板失败: {str(e)}")
+
+    def import_excel(self):
+        """从Excel导入参数"""
         try:
-            if file_path.endswith(('.xlsx', '.xls')):
-                # 读取Excel文件
-                df = pd.read_excel(file_path)
-                # 假设第一列是提示词
-                prompts = df.iloc[:, 0].astype(str).tolist()
-            else:
-                # 读取文本文件
-                with open(file_path, 'r', encoding='utf-8') as f:
-                    prompts = f.readlines()
+            file_path, _ = QFileDialog.getOpenFileName(
+                self, "选择Excel文件", "", "Excel Files (*.xlsx *.xls)"
+            )
+            if not file_path:
+                return
             
-            # 清理提示词
-            prompts = [p.strip() for p in prompts if p.strip()]
+            df = pd.read_excel(file_path)
+            if df.empty:
+                QMessageBox.warning(self, "警告", "Excel文件为空")
+                return
             
-            # 设置到文本框
-            self.prompt_input.setPlainText('\n'.join(prompts))
+            # 清空任务列表
+            self.task_list.clear()
+            self.tasks = []
             
-            QMessageBox.information(self, "提示", f"成功导入{len(prompts)}个提示词")
+            # 导入任务
+            for _, row in df.iterrows():
+                try:
+                    prompt = row.get("prompt", "").strip()
+                    if not prompt:  # 跳过空提示词
+                        continue
+                    
+                    # 创建任务项
+                    task_info = {
+                        "prompt": prompt,
+                        "negative_prompt": str(row.get("negative_prompt", "")),
+                        "model": str(row.get("model", "stabilityai/stable-diffusion-3-5-large")),
+                        "size": str(row.get("size", "1024x1024")),
+                        "steps": int(row.get("steps", 20)),
+                        "guidance": float(row.get("guidance", 7.5)),
+                        "batch_size": int(row.get("batch_size", 1)),
+                        "seed": int(row.get("seed", -1)) if pd.notna(row.get("seed")) else -1,
+                        "enhance_prompt": bool(row.get("enhance_prompt", False))
+                    }
+                    
+                    # 添加到任务列表
+                    item = QListWidgetItem(f"提示词: {prompt[:50]}...")
+                    item.setData(Qt.ItemDataRole.UserRole, task_info)
+                    self.task_list.addItem(item)
+                    self.tasks.append(task_info)
+                    
+                except Exception as e:
+                    print(f"导入任务时出错: {str(e)}")
+                    continue
+            
+            # 更新界面状态
+            self.start_btn.setEnabled(bool(self.tasks))
+            self.clear_btn.setEnabled(bool(self.tasks))
+            
+            QMessageBox.information(self, "成功", f"成功导入 {len(self.tasks)} 个任务")
             
         except Exception as e:
             QMessageBox.warning(self, "错误", f"导入失败: {str(e)}")
-    
-    def load_history(self):
-        """加载历史记录"""
-        records = self.history_manager.get_records()
-        self.history_list.clear()
-        for record in records:
-            item = QListWidgetItem()
+
+    def show_history(self):
+        """显示历史记录"""
+        try:
+            # 创建历史记录对话框
+            dialog = QDialog(self)
+            dialog.setWindowTitle("历史记录")
+            dialog.resize(800, 600)
             
-            # 获取所有图片路径
-            image_paths = record.get("image_paths", [])
-            if not image_paths and "image_path" in record:  # 兼容旧格式
-                image_paths = [record["image_path"]]
+            # 创建布局
+            layout = QVBoxLayout()
             
-            # 创建缩略图
-            if image_paths:
-                # 使用第一张图片作为主缩略图
-                if os.path.exists(image_paths[0]):
-                    pixmap = QPixmap(image_paths[0])
-                    scaled_pixmap = pixmap.scaled(80, 80, Qt.AspectRatioMode.KeepAspectRatio)
-                    item.setIcon(QIcon(scaled_pixmap))
+            # 创建表格
+            table = QTableWidget()
+            table.setColumnCount(9)
+            table.setHorizontalHeaderLabels([
+                "时间", "提示词", "负面提示词", "模型", 
+                "尺寸", "步数", "引导系数", "批量", "种子值"
+            ])
             
-            # 设置文本（使用文件名而不是时间戳）
-            filename = "未知"
-            if image_paths:
-                filename = os.path.splitext(os.path.basename(image_paths[0]))[0]
-                if len(image_paths) > 1:
-                    filename += f" (+{len(image_paths)-1})"
+            # 设置表格属性
+            table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
+            table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
+            table.setSelectionMode(QTableWidget.SelectionMode.SingleSelection)
+            table.horizontalHeader().setStretchLastSection(True)
+            table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.ResizeToContents)
             
-            params = record.get("params", {})
-            prompt = params.get("prompt", "")[:50]
-            image_count = len(image_paths)
-            item.setText(f"{filename}\n{prompt}\n[{image_count}张图片]")
+            # 加载历史记录
+            history = self.config_manager.get("history", [])
+            if not isinstance(history, list):
+                history = []
             
-            # 设置数据
-            item.setData(Qt.ItemDataRole.UserRole, record)
-            self.history_list.addItem(item)
-    
-    def on_history_item_double_clicked(self, item):
-        """处理历史记录双击事件"""
-        record = item.data(Qt.ItemDataRole.UserRole)
-        if not record:
-            return
-        
-        params = record.get("params", {})
-        
-        # 恢复参数
-        self.prompt_input.setPlainText(params.get("prompt", ""))
-        self.negative_input.setPlainText(params.get("negative_prompt", ""))
-        
-        # 设置模型
-        model = params.get("model", "")
-        index = self.model_combo.findText(model)
-        if index >= 0:
-            self.model_combo.setCurrentIndex(index)
-        
-        # 设置尺寸
-        size = params.get("size", "")
-        index = self.size_combo.findText(size)
-        if index >= 0:
-            self.size_combo.setCurrentIndex(index)
-        
-        # 设置其他参数
-        self.steps_spin.setValue(params.get("num_inference_steps", 20))
-        self.guidance_spin.setValue(params.get("guidance_scale", 7.5))
-        self.seed_spin.setValue(params.get("seed", -1))
-        self.enhance_check.setChecked(params.get("prompt_enhancement", False))
-        
-        # 打开所有图片
-        image_paths = record.get("image_paths", [])
-        if not image_paths and "image_path" in record:  # 兼容旧格式
-            image_paths = [record["image_path"]]
-        
-        for path in image_paths:
-            if os.path.exists(path):
-                os.startfile(path)
-    
-    def on_clear_history_clicked(self):
-        """处理清空历史按钮点击事件"""
-        reply = QMessageBox.question(
-            self,
-            "确认",
-            "确定要清空所有历史记录吗？",
-            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
-        )
-        
-        if reply == QMessageBox.StandardButton.Yes:
-            self.history_manager.clear_records()
-            self.load_history()
-    
-    def on_model_changed(self, model_name):
-        """处理模型选择变更"""
-        if "turbo" in model_name.lower():
-            self.steps_spin.setValue(4)
-            self.steps_spin.setEnabled(False)
-        else:
-            self.steps_spin.setEnabled(True)
-    
+            table.setRowCount(len(history))
+            
+            for i, record in enumerate(history):
+                try:
+                    if not isinstance(record, dict):
+                        continue
+                    
+                    # 添加记录到表格
+                    table.setItem(i, 0, QTableWidgetItem(str(record.get("timestamp", ""))))
+                    table.setItem(i, 1, QTableWidgetItem(str(record.get("prompt", ""))))
+                    table.setItem(i, 2, QTableWidgetItem(str(record.get("negative_prompt", ""))))
+                    table.setItem(i, 3, QTableWidgetItem(str(record.get("model", ""))))
+                    table.setItem(i, 4, QTableWidgetItem(str(record.get("size", ""))))
+                    table.setItem(i, 5, QTableWidgetItem(str(record.get("steps", ""))))
+                    table.setItem(i, 6, QTableWidgetItem(str(record.get("guidance", ""))))
+                    table.setItem(i, 7, QTableWidgetItem(str(record.get("batch_size", ""))))
+                    table.setItem(i, 8, QTableWidgetItem(str(record.get("seed", ""))))
+                except Exception as e:
+                    print(f"Error adding record {i}: {str(e)}")
+                    continue
+            
+            # 添加表格到布局
+            layout.addWidget(table)
+            
+            # 创建按钮
+            button_layout = QHBoxLayout()
+            apply_btn = QPushButton("应用选中记录")
+            close_btn = QPushButton("关闭")
+            button_layout.addWidget(apply_btn)
+            button_layout.addWidget(close_btn)
+            layout.addLayout(button_layout)
+            
+            # 设置对话框布局
+            dialog.setLayout(layout)
+            
+            # 连接信号
+            def on_apply():
+                try:
+                    current_row = table.currentRow()
+                    if current_row >= 0:
+                        record = history[current_row]
+                        
+                        # 创建新任务
+                        task_info = {
+                            "prompt": str(record.get("prompt", "")),
+                            "negative_prompt": str(record.get("negative_prompt", "")),
+                            "model": str(record.get("model", "stabilityai/stable-diffusion-3-5-large")),
+                            "size": str(record.get("size", "1024x1024")),
+                            "steps": int(record.get("steps", 20)),
+                            "guidance": float(record.get("guidance", 7.5)),
+                            "batch_size": int(record.get("batch_size", 1)),
+                            "seed": int(record.get("seed", -1)),
+                            "enhance_prompt": bool(record.get("enhance_prompt", False))
+                        }
+                        
+                        # 添加到任务列表
+                        item = QListWidgetItem(f"提示词: {task_info['prompt'][:50]}...")
+                        item.setData(Qt.ItemDataRole.UserRole, task_info)
+                        self.task_list.addItem(item)
+                        self.tasks.append(task_info)
+                        
+                        # 更新界面状态
+                        self.start_btn.setEnabled(True)
+                        self.clear_btn.setEnabled(True)
+                        
+                        dialog.accept()
+                except Exception as e:
+                    QMessageBox.warning(self, "错误", f"应用记录失败: {str(e)}")
+            
+            apply_btn.clicked.connect(on_apply)
+            close_btn.clicked.connect(dialog.reject)
+            
+            # 显示对话框
+            dialog.exec()
+        except Exception as e:
+            QMessageBox.critical(self, "错误", f"显示历史记录失败: {str(e)}")
+
+    def pause_generation(self):
+        """暂停生成"""
+        if hasattr(self, 'gen_thread') and self.gen_thread and self.gen_thread.isRunning():
+            self.gen_thread.stop()
+            self.pause_btn.setEnabled(False)
+            self.resume_btn.setEnabled(True)
+            self.update_progress_text("已暂停生成")
+
+    def resume_generation(self):
+        """恢复生成"""
+        if hasattr(self, 'gen_thread') and self.gen_thread:
+            self.gen_thread.is_running = True
+            self.pause_btn.setEnabled(True)
+            self.resume_btn.setEnabled(False)
+            self.update_progress_text("继续生成")
+
     def on_generate_clicked(self):
         """处理生成按钮点击事件"""
         try:
-            # 获取提示词列表
-            prompts = self.prompt_input.toPlainText().strip().split('\n')
-            prompts = [p.strip() for p in prompts if p.strip()]
-            
-            if not prompts:
-                QMessageBox.warning(self, "提示", "请输入至少一个提示词")
+            if not self.tasks:
+                QMessageBox.warning(self, "提示", "请先导入任务")
                 return
             
-            # 获取其他参数
-            negative = str(self.negative_input.toPlainText()).strip()
-            model = str(self.model_combo.currentText())
-            size = str(self.size_combo.currentText())
-            steps = self.steps_spin.value()
-            guidance = self.guidance_spin.value()
-            seed = self.seed_spin.value()
-            enhance = self.enhance_check.isChecked()
-            
-            # 构建参数字典
-            params = {
-                "negative_prompt": negative,
-                "model": model,
-                "image_size": size,
-                "num_inference_steps": steps,
-                "guidance_scale": guidance,
-                "seed": seed,
-                "enhance_prompt": enhance
-            }
-            
-            # 检查API配置
-            if not self.api_manager.api:
-                raise Exception("生成失败: API未配置")
-            
-            # 获取保存路径
-            save_dir = self.config.get("paths.output_dir")
+            # 获取保存目录
+            save_dir = self.config_manager.get("paths", {}).get("output_dir", "")
             if not save_dir:
-                save_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "图片保存")
-            os.makedirs(save_dir, exist_ok=True)
+                QMessageBox.warning(self, "提示", "请先在设置中配置输出目录")
+                return
+            
+            if not os.path.exists(save_dir):
+                os.makedirs(save_dir)
             
             # 获取命名规则
-            naming_rule = self.config.get("naming.rule", "{timestamp}_{prompt}_{index}")
-            
-            # 禁用生成按钮
-            self.generate_btn.setEnabled(False)
-            self.generate_btn.setText("生成中...")
-            self.progress_label.setText("准备生成...")
-            self.progress_bar.setMaximum(len(prompts))
-            self.progress_bar.setValue(0)
-            self.progress_bar.show()
+            naming_rule = self.config_manager.get("naming_rule", "{timestamp}_{prompt}_{model}_{size}_{seed}")
             
             # 创建并启动生成线程
             self.gen_thread = BatchGenerationThread(
                 self.api_manager.api,
-                prompts,
-                params,
+                [task["prompt"] for task in self.tasks],
+                self.tasks[0],  # 使用第一个任务的参数作为基础参数
                 save_dir,
                 naming_rule
             )
             
             # 连接信号
-            self.gen_thread.progress.connect(self.update_progress)
+            self.gen_thread.progress.connect(self.update_progress_text)
             self.gen_thread.error.connect(self.on_generation_error)
-            self.gen_thread.success.connect(self.on_generation_success)
             self.gen_thread.finished.connect(self.on_generation_finished)
+            
+            # 更新界面状态
+            self.start_btn.setEnabled(False)
+            self.pause_btn.setEnabled(True)
+            self.resume_btn.setEnabled(False)
+            self.clear_btn.setEnabled(False)
+            self.import_btn.setEnabled(False)
             
             # 启动线程
             self.gen_thread.start()
             
         except Exception as e:
-            self.on_generation_error(str(e))
-    
-    def update_progress(self, message):
-        """更新进度提示"""
-        self.progress_label.setText(message)
-        if "第" in message and "个提示词" in message:
-            try:
-                current = int(message.split("/")[0].split("第")[1].strip())
-                self.progress_bar.setValue(current)
-            except:
-                pass
-        QApplication.processEvents()
-    
-    def on_generation_error(self, error_msg):
-        """处理生成错误"""
-        QMessageBox.warning(self, "错误", error_msg)
-        print(f"生成图片时出错: {error_msg}")
-    
-    def on_generation_success(self, saved_files):
-        """处理生成成功"""
-        # 为每张图片添加一条历史记录
-        for file_path, seed, prompt in saved_files:
-            history_item = {
-                "timestamp": datetime.now().isoformat(),
-                "params": {
-                    "prompt": prompt,
-                    "negative_prompt": self.negative_input.toPlainText().strip(),
-                    "model": self.model_combo.currentText(),
-                    "image_size": self.size_combo.currentText(),
-                    "num_inference_steps": self.steps_spin.value(),
-                    "guidance_scale": self.guidance_spin.value(),
-                    "seed": seed,
-                    "prompt_enhancement": self.enhance_check.isChecked(),
-                    "batch_size": 1
-                },
-                "image_paths": [file_path]
-            }
-            self.history_manager.add_record(history_item)
-        
-        self.load_history()
-        QMessageBox.information(self, "提示", f"生成完成，已保存{len(saved_files)}张图片")
-    
-    def on_generation_finished(self):
-        """生成完成后的清理工作"""
-        self.generate_btn.setEnabled(True)
-        self.generate_btn.setText("批量生成")
-        self.progress_label.setText("")
-        self.progress_bar.hide()
-        self.gen_thread = None
-    
-    def randomize_seed(self):
-        """生成新的随机种子"""
-        self.seed_spin.setValue(random.randint(0, 2147483647))
-    
+            QMessageBox.warning(self, "错误", f"启动生成失败: {str(e)}")
+            self.start_btn.setEnabled(True)
+
+    def clear_tasks(self):
+        """清空任务"""
+        self.task_list.clear()  # 清空任务列表
+        self.tasks = []  # 清空任务数组
+        self.progress_text.clear()  # 清空进度文本
+        self.start_btn.setEnabled(False)
+        self.pause_btn.setEnabled(False)
+        self.resume_btn.setEnabled(False)
+        self.clear_btn.setEnabled(False)
+        self.import_btn.setEnabled(True)  # 启用导入按钮
+
     def update_defaults(self):
         """更新默认参数设置"""
-        defaults = self.config.get("defaults", {})
-        
-        # 更新模型
-        default_model = defaults.get("model", "stabilityai/stable-diffusion-3-5-large")
-        index = self.model_combo.findText(default_model)
-        if index >= 0:
-            self.model_combo.setCurrentIndex(index)
-        
-        # 更新尺寸
-        default_size = defaults.get("size", "1024x1024")
-        index = self.size_combo.findText(default_size)
-        if index >= 0:
-            self.size_combo.setCurrentIndex(index)
-        
-        # 更新其他参数
-        self.steps_spin.setValue(defaults.get("steps", 20))
-        self.guidance_spin.setValue(defaults.get("guidance", 7.5))
-        self.seed_spin.setValue(defaults.get("seed", -1)) 
+        # 批量生成界面不需要实时更新默认参数
+        # 因为所有参数都是从Excel导入的
+        pass

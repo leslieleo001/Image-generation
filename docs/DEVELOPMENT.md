@@ -485,6 +485,42 @@ project/
   - 状态栏消息
   - 日志记录
 
+## API错误处理
+
+### 重试机制
+API请求失败时会自动进行重试，最多重试3次。重试策略如下：
+
+1. 首次失败后等待5秒
+2. 第二次失败后等待10秒
+3. 第三次失败后等待15秒
+
+### 错误类型处理
+
+1. HTTP状态码处理：
+   - 429: API请求超出限制
+   - 503: API服务暂时不可用
+   - 其他状态码: 尝试解析详细错误信息
+
+2. 网络错误处理：
+   - 超时错误: 请求超过300秒未响应
+   - 连接错误: 无法连接到API服务器
+
+3. 日志记录：
+   - DEBUG级别: 记录请求参数和响应数据
+   - WARNING级别: 记录重试信息
+   - ERROR级别: 记录致命错误
+
+### 使用示例
+```python
+try:
+    result = api_client.generate_image(
+        prompt="example prompt",
+        model="stable-diffusion-3-5-large",
+        max_retries=3  # 设置最大重试次数
+    )
+except Exception as e:
+    print(f"生成失败: {str(e)}")
+
 ## 8. 测试说明
 
 ### 8.1 单元测试

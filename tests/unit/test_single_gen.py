@@ -33,7 +33,7 @@ def test_ui_initialization(single_gen_tab):
     assert single_gen_tab.steps_spin is not None
     assert single_gen_tab.guidance_spin is not None
     assert single_gen_tab.enhance_check is not None
-    assert single_gen_tab.seed_spin is not None
+    assert single_gen_tab.seed_input is not None
     assert single_gen_tab.random_seed_check is not None
     assert single_gen_tab.history_list is not None
 
@@ -75,18 +75,18 @@ def test_random_seed_behavior(single_gen_tab):
     
     # 测试随机种子开关
     assert not single_gen_tab.random_seed_check.isChecked()  # 默认不选中
-    assert single_gen_tab.seed_spin.isEnabled()  # 种子值输入框可用
+    assert single_gen_tab.seed_input.isEnabled()  # 种子值输入框可用
     
     # 选中随机种子
     single_gen_tab.random_seed_check.setChecked(True)
     assert len(spy) > 0  # 确保信号被触发
-    assert not single_gen_tab.seed_spin.isEnabled()  # 种子值输入框禁用
-    assert single_gen_tab.seed_spin.text() == ""  # 种子值清空
+    assert not single_gen_tab.seed_input.isEnabled()  # 种子值输入框禁用
+    assert single_gen_tab.seed_input.text() == ""  # 种子值清空
     
     # 取消随机种子
     single_gen_tab.random_seed_check.setChecked(False)
     assert len(spy) > 1  # 确保信号被触发
-    assert single_gen_tab.seed_spin.isEnabled()  # 种子值输入框可用
+    assert single_gen_tab.seed_input.isEnabled()  # 种子值输入框可用
 
 def test_parameter_validation(single_gen_tab):
     """测试参数验证"""
@@ -116,36 +116,40 @@ def test_random_seed_functionality(single_gen_tab):
     
     # 验证初始状态
     assert not single_gen_tab.random_seed_check.isChecked()  # 默认不选中
-    assert single_gen_tab.seed_spin.isEnabled()  # 种子值输入框可用
+    assert single_gen_tab.seed_input.isEnabled()  # 种子值输入框可用
     
     # 测试选中随机种子
     single_gen_tab.random_seed_check.setChecked(True)
     assert len(spy) > 0  # 确保信号被触发
     assert single_gen_tab.random_seed_check.isChecked()  # 选中状态
-    assert not single_gen_tab.seed_spin.isEnabled()  # 种子值输入框禁用
-    assert single_gen_tab.seed_spin.text() == ""  # 种子值清空
+    assert not single_gen_tab.seed_input.isEnabled()  # 种子值输入框禁用
+    assert single_gen_tab.seed_input.text() == ""  # 种子值清空
     
     # 测试取消随机种子
     single_gen_tab.random_seed_check.setChecked(False)
     assert len(spy) > 1  # 确保信号被触发
     assert not single_gen_tab.random_seed_check.isChecked()  # 取消选中
-    assert single_gen_tab.seed_spin.isEnabled()  # 种子值输入框可用
+    assert single_gen_tab.seed_input.isEnabled()  # 种子值输入框可用
     
     # 测试参数获取
     # 1. 使用随机种子
     single_gen_tab.random_seed_check.setChecked(True)
     assert len(spy) > 2  # 确保信号被触发
     params = single_gen_tab.get_generation_params()
-    assert params["seed"] is None
+    assert "seed" in params
+    assert isinstance(params["seed"], int)
+    assert 1 <= params["seed"] <= 9999999998
     
     # 2. 使用固定种子值
     single_gen_tab.random_seed_check.setChecked(False)
     assert len(spy) > 3  # 确保信号被触发
-    single_gen_tab.seed_spin.setValue(42)
+    single_gen_tab.seed_input.setText("42")
     params = single_gen_tab.get_generation_params()
     assert params["seed"] == 42
     
     # 3. 种子值为空
-    single_gen_tab.seed_spin.clear()
+    single_gen_tab.seed_input.clear()
     params = single_gen_tab.get_generation_params()
-    assert params["seed"] is None 
+    assert "seed" in params
+    assert isinstance(params["seed"], int)
+    assert 1 <= params["seed"] <= 9999999998 

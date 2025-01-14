@@ -17,7 +17,8 @@ class ConfigManager:
                 "size": "512x512",
                 "steps": 20,
                 "guidance": 7.5,
-                "enhance": False
+                "enhance": False,
+                "negative_prompt": ""
             },
             "paths": {
                 "output_dir": "",

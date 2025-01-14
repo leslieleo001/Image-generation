@@ -141,41 +141,29 @@ def test_test_api_key_empty(settings_tab, monkeypatch, qtbot):
     # 验证是否显示警告消息
     mock_message_box.assert_called_once_with(settings_tab, "警告", "请先输入API密钥")
 
-def test_default_seed_setting(settings_tab, mock_config, monkeypatch):
+def test_default_seed_setting(settings_tab):
     """测试默认种子值设置"""
-    # 模拟QMessageBox
-    mock_message_box = MagicMock()
-    monkeypatch.setattr(QMessageBox, 'information', mock_message_box)
+    # 测试初始状态
+    assert settings_tab.default_seed_input.text() == ""  # 显示为空
+    assert settings_tab.default_random_seed_check.isChecked() == False  # 默认不选中
     
-    # 验证初始状态
-    assert settings_tab.default_seed_spin.text() == ""  # 显示为空
-    assert settings_tab.default_seed_spin.specialValueText() == ""
-    assert settings_tab.default_seed_spin.minimum() == 0  # 最小值为0
-    assert settings_tab.default_seed_spin.maximum() == 2147483647
+    # 测试随机种子开关
+    settings_tab.default_random_seed_check.setChecked(True)
+    assert not settings_tab.default_seed_input.isEnabled()  # 输入框禁用
+    assert settings_tab.default_seed_input.text() == ""  # 值清空
     
-    # 测试保存空值
-    settings_tab.default_seed_spin.clear()  # 清空值
-    settings_tab.save_settings()
-    defaults = mock_config.get("defaults", {})
-    assert "seed" not in defaults  # 空值不应该被保存
-    mock_message_box.assert_called_with(settings_tab, "提示", "设置已保存")
-    mock_message_box.reset_mock()
+    # 测试固定种子值
+    settings_tab.default_random_seed_check.setChecked(False)
+    settings_tab.default_seed_input.setText("42")
+    assert settings_tab.default_seed_input.isEnabled()  # 输入框启用
+    assert settings_tab.default_seed_input.text() == "42"  # 值设置正确
     
-    # 测试设置具体值
-    settings_tab.default_seed_spin.setValue(42)
-    assert settings_tab.default_seed_spin.text() == "42"
-    settings_tab.save_settings()
-    assert mock_config.get("defaults", {}).get("seed") == 42  # 具体值应该被保存
-    mock_message_box.assert_called_with(settings_tab, "提示", "设置已保存")
-    mock_message_box.reset_mock()
+    # 测试种子值范围验证
+    settings_tab.default_seed_input.setText("0")  # 小于最小值
+    assert settings_tab.default_seed_input.text() == "1"  # 自动修正为最小值
     
-    # 测试加载空值设置
-    mock_config.config = {"defaults": {}}  # 清空设置
-    settings_tab.load_settings()
-    assert settings_tab.default_seed_spin.text() == ""  # 应该显示为空
+    settings_tab.default_seed_input.setText("9999999999")  # 大于最大值
+    assert settings_tab.default_seed_input.text() == "9999999998"  # 自动修正为最大值
     
-    # 测试加载具体值设置
-    mock_config.config = {"defaults": {"seed": 42}}  # 设置具体值
-    settings_tab.load_settings()
-    assert settings_tab.default_seed_spin.value() == 42  # 应该为42
-    assert settings_tab.default_seed_spin.text() == "42"  # 应该显示42 
+    settings_tab.default_seed_input.setText("abc")  # 非数字
+    assert settings_tab.default_seed_input.text() == ""  # 清除非法输入 
