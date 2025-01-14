@@ -409,59 +409,51 @@ class HistoryWindow(QMainWindow):
             self.table.setCellWidget(idx, 7, empty_widget)
     
     def delete_selected(self, delete_files=False):
-        """删除选中的记录
-        Args:
-            delete_files (bool): 是否同时删除图片文件
-        """
-        selected_rows = self.get_checked_rows()
+        """删除选中的记录"""
+        selected_rows = set()
+        for item in self.table.selectedItems():
+            selected_rows.add(item.row())
+        
         if not selected_rows:
             QMessageBox.warning(self, "提示", "请先选择要删除的记录")
             return
-            
-        msg = f"确定要删除选中的 {len(selected_rows)} 条记录"
+        
+        # 确认删除
+        msg = "确定要删除选中的记录吗？"
         if delete_files:
-            msg += "及其对应的图片文件"
-        msg += "吗？"
+            msg += "\n注意：相关的图片文件也会被删除！"
         
         reply = QMessageBox.question(
             self,
-            "确认",
+            "确认删除",
             msg,
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
         )
         
         if reply == QMessageBox.StandardButton.Yes:
-            # 从后往前删除，避免索引变化
-            for row in sorted(selected_rows, reverse=True):
-                # 获取所有图片路径
-                path_item = self.table.item(row, 6)  # 路径列的索引变为6
-                if path_item:
-                    image_paths = path_item.text().split("\n")
-                    
-                    # 删除图片文件
-                    if delete_files:
-                        for image_path in image_paths:
-                            if os.path.exists(image_path):
-                                try:
-                                    os.remove(image_path)
-                                except Exception as e:
-                                    print(f"删除图片文件失败: {str(e)}")
+            # 获取要删除的记录索引
+            rows = sorted(list(selected_rows), reverse=True)
+            for row in rows:
+                # 获取记录
+                record = self.history_manager.records[row]
                 
-                # 从历史记录中删除
+                # 删除文件
+                if delete_files:
+                    for image_path in record.get("image_paths", []):
+                        try:
+                            if os.path.exists(image_path):
+                                os.remove(image_path)
+                        except Exception as e:
+                            print(f"删除文件失败: {str(e)}")
+                
+                # 删除记录
                 self.history_manager.records.pop(row)
             
-            # 保存更改
-            self.history_manager.save_records()
-            # 发送历史记录更新信号
-            self.history_manager.history_updated.emit()
             # 刷新表格
             self.refresh_table()
             
-            QMessageBox.information(
-                self,
-                "提示",
-                f"已删除 {len(selected_rows)} 条记录" + ("及其图片文件" if delete_files else "")
-            )
+            # 保存更改
+            self.history_manager.save_records()
     
     def export_to_excel(self):
         """导出选中记录为Excel（包含原图）"""

@@ -289,59 +289,74 @@ project/
 
 ### 7.2 批量生成功能
 
-#### 7.2.1 Excel处理
-- 主要类：`ExcelHandler`
-- 功能：
-  - 读取任务列表
-  - 导出结果
-  - 创建模板
-- 数据格式：
-  - 必需列：提示词、模型、尺寸
-  - 可选列：状态、结果路径
-- 错误处理：
-  - 文件不存在
-  - 格式错误
-  - 必需列缺失
-  - 导出失败
-
-#### 7.2.2 任务队列
-- 主要类：`TaskQueue`
+#### 7.2.1 基本架构
+- 主要类：`BatchGenerationThread` 和 `BatchGenTab`
 - 核心功能：
-  - 任务添加和清空
-  - 启动/暂停/恢复/停止控制
-  - 任务状态管理
-  - 进度跟踪
-- 线程安全：
-  - 使用 Lock 保护共享资源
-  - Event 控制线程状态
-  - 安全的任务状态更新
-- 回调机制：
-  - 任务完成回调
-  - 任务错误回调
-  - 进度更新回调
-- 错误处理：
-  - API调用错误
-  - 线程异常
-  - 资源清理
-  - 状态恢复
+  * 支持Excel导入任务
+  * 异步生成处理
+  * 实时进度显示
+  * 取消和暂停支持
+- 实现细节：
+  ```python
+  class BatchGenerationThread(QThread):
+      progress = pyqtSignal(str)  # 进度信号
+      error = pyqtSignal(str)     # 错误信号
+      finished = pyqtSignal(list)  # 完成信号
+      image_saved = pyqtSignal(dict)  # 单张图片保存信号
+      
+      def __init__(self, api, prompts, params, save_dir, naming_rule):
+          super().__init__()
+          self.api = api
+          self.prompts = prompts
+          self.params = params
+          self.save_dir = save_dir
+          self.naming_rule = naming_rule
+          self.is_running = True
+          self.saved_files = []
+      
+      def stop(self):
+          """停止生成"""
+          self.is_running = False
+  ```
 
-#### 7.2.3 界面实现
-- 主要类：`BatchGenTab`
-- 界面组件：
-  - 任务表格
-  - 进度条
-  - 控制按钮
-  - 排序功能
-- 功能实现：
-  - Excel导入导出
-  - 任务编辑
-  - 状态显示
-  - 结果查看
-- 交互优化：
-  - 按钮状态管理
-  - 实时进度更新
-  - 错误提示
-  - 操作确认
+#### 7.2.2 取消机制
+- 实现方式：
+  * 使用`is_running`标志控制生成流程
+  * 使用`is_cancelling`标志管理取消状态
+  * 分离图片保存和记录创建逻辑
+- 代码示例：
+  ```python
+  def cancel_generation(self):
+      if self.is_cancelling:  # 避免重复取消
+          return
+          
+      if reply == QMessageBox.StandardButton.Yes:
+          self.is_cancelling = True
+          self.update_progress_text("正在取消生成...")
+          self.gen_thread.stop()
+          
+          # 禁用所有按钮，防止重复操作
+          self.start_btn.setEnabled(False)
+          self.pause_btn.setEnabled(False)
+          self.resume_btn.setEnabled(False)
+          self.cancel_btn.setEnabled(False)
+  ```
+
+#### 7.2.3 历史记录管理
+- 实现方式：
+  * 每张图片独立记录
+  * 实时保存记录
+  * 使用信号通知保存
+- 代码示例：
+  ```python
+  def on_image_saved(self, record):
+      """处理单张图片保存完成事件"""
+      self.history_manager.add_record({
+          "timestamp": record["timestamp"],
+          "params": record["params"],
+          "image_paths": [record["image_path"]]
+      })
+  ```
 
 #### 7.2.4 测试策略
 - 单元测试：
@@ -849,7 +864,22 @@ preview.reset_view()
 class BatchGenerationThread(QThread):
     progress = pyqtSignal(str)  # 进度信号
     error = pyqtSignal(str)     # 错误信号
-    success = pyqtSignal(list)  # 成功信号
+    finished = pyqtSignal(list)  # 完成信号
+    image_saved = pyqtSignal(dict)  # 单张图片保存信号
+    
+    def __init__(self, api, prompts, params, save_dir, naming_rule):
+        super().__init__()
+        self.api = api
+        self.prompts = prompts
+        self.params = params
+        self.save_dir = save_dir
+        self.naming_rule = naming_rule
+        self.is_running = True
+        self.saved_files = []
+    
+    def stop(self):
+        """停止生成"""
+        self.is_running = False
 ```
 
 - 使用QThread处理生成任务，避免界面卡顿

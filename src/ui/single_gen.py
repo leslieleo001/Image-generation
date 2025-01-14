@@ -189,13 +189,12 @@ class ImageGenerationThread(QThread):
 class SingleGenTab(QWidget):
     """单图生成标签页"""
     
-    def __init__(self, config: ConfigManager, api_manager: APIManager):
+    def __init__(self, config: ConfigManager, api_manager: APIManager, history_manager: HistoryManager):
         super().__init__()
         self.config = config
         self.api_manager = api_manager
+        self.history_manager = history_manager
         
-        # 初始化历史记录管理器
-        self.history_manager = HistoryManager()
         # 连接历史记录更新信号
         self.history_manager.history_updated.connect(self.load_history)
         

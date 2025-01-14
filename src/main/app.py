@@ -5,6 +5,7 @@ from src.ui.batch_gen import BatchGenTab
 from src.ui.settings import SettingsTab
 from src.utils.config_manager import ConfigManager
 from src.utils.api_manager import APIManager
+from src.utils.history_manager import HistoryManager
 
 class HelpTab(QWidget):
     """帮助标签页"""
@@ -83,6 +84,9 @@ class MainWindow(QMainWindow):
         # 初始化API管理器
         self.api_manager = APIManager(self.config)
         
+        # 初始化历史记录管理器
+        self.history_manager = HistoryManager()
+        
         # 创建标签页
         self.init_tabs()
         
@@ -92,8 +96,8 @@ class MainWindow(QMainWindow):
         tabs = QTabWidget()
         
         # 创建各个标签页
-        self.single_gen_tab = SingleGenTab(self.config, self.api_manager)
-        self.batch_gen_tab = BatchGenTab(self.api_manager, self.config)
+        self.single_gen_tab = SingleGenTab(self.config, self.api_manager, self.history_manager)
+        self.batch_gen_tab = BatchGenTab(self.api_manager, self.config, self.history_manager)
         self.settings_tab = SettingsTab(self.config, self.api_manager)
         self.help_tab = HelpTab()
         
