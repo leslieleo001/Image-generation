@@ -120,10 +120,23 @@ class SettingsTab(QWidget):
 
         # 默认种子值
         self.default_seed_spin = QSpinBox()
-        self.default_seed_spin.setRange(-1, 2147483647)
-        self.default_seed_spin.setValue(-1)
-        self.default_seed_spin.setToolTip("-1表示每次生成使用不同的随机种子，0-2147483647为固定种子值")
-        default_layout.addRow("默认种子值:", self.default_seed_spin)
+        self.default_seed_spin.setRange(0, 2147483647)  # 范围从0开始
+        self.default_seed_spin.setSpecialValueText("")  # 设置特殊值文本为空
+        self.default_seed_spin.setButtonSymbols(QSpinBox.ButtonSymbols.NoButtons)  # 隐藏上下按钮
+        self.default_seed_spin.setStyleSheet("QSpinBox { padding-right: 5px; }")  # 调整右侧内边距
+        self.default_seed_spin.setKeyboardTracking(True)  # 允许键盘输入
+        self.default_seed_spin.setToolTip("留空表示使用随机种子，0-2147483647为固定种子值")
+
+        # 添加清空按钮
+        clear_seed_btn = QPushButton("清空")
+        clear_seed_btn.setFixedWidth(50)
+        clear_seed_btn.clicked.connect(lambda: self.default_seed_spin.clear())
+
+        # 使用水平布局组合种子输入和清空按钮
+        seed_layout = QHBoxLayout()
+        seed_layout.addWidget(self.default_seed_spin)
+        seed_layout.addWidget(clear_seed_btn)
+        default_layout.addRow("种子值:", seed_layout)
 
         default_group.setLayout(default_layout)
         layout.addWidget(default_group)
@@ -250,7 +263,12 @@ class SettingsTab(QWidget):
         self.default_guidance_spin.setValue(defaults.get("guidance", 7.5))
         
         # 默认种子值
-        self.default_seed_spin.setValue(defaults.get("seed", -1))
+        seed = defaults.get("seed")
+        if seed is None:
+            self.default_seed_spin.clear()  # 显示为空
+            self.default_seed_spin.setSpecialValueText("")  # 确保特殊值文本为空
+        else:
+            self.default_seed_spin.setValue(seed)
         
         # 加载输出目录
         output_dir = self.config.get("paths.output_dir", "")
@@ -319,8 +337,12 @@ class SettingsTab(QWidget):
                 "batch_size": self.default_batch_spin.value(),
                 "steps": self.default_steps_spin.value(),
                 "guidance": self.default_guidance_spin.value(),
-                "seed": self.default_seed_spin.value()
             }
+            
+            # 只有当种子值不为空时才保存
+            if self.default_seed_spin.text():  # 检查是否有文本值
+                defaults["seed"] = self.default_seed_spin.value()
+            
             self.config.set("defaults", defaults)
             
             # 保存输出目录

@@ -1,23 +1,21 @@
+"""单图生成标签页模块"""
+
 import os
 import random
 import requests
 from datetime import datetime
-import json
-
-from PyQt6.QtCore import Qt, QSize, QThread, pyqtSignal
 from PyQt6.QtWidgets import (
-    QWidget, QVBoxLayout, QHBoxLayout, QLabel, QTextEdit,
-    QComboBox, QSpinBox, QDoubleSpinBox, QCheckBox,
-    QPushButton, QListWidget, QListWidgetItem, QMessageBox,
-    QScrollArea, QApplication
+    QWidget, QVBoxLayout, QHBoxLayout, QLabel, 
+    QTextEdit, QComboBox, QSpinBox, QDoubleSpinBox,
+    QPushButton, QCheckBox, QListWidget, QListWidgetItem,
+    QMessageBox, QApplication
 )
-from PyQt6.QtGui import QPixmap
-from PyQt6.QtGui import QIcon
+from PyQt6.QtCore import Qt, QThread, pyqtSignal, QSize
+from PyQt6.QtGui import QPixmap, QIcon
 
-from src.utils.api_client import SiliconFlowAPI
-from src.utils.api_manager import APIManager
-from src.utils.config_manager import ConfigManager
-from src.utils.history_manager import HistoryManager
+from ..utils.config_manager import ConfigManager
+from ..utils.api_manager import APIManager
+from ..utils.history_manager import HistoryManager
 from .history_window import HistoryWindow
 
 class ImageGenerationThread(QThread):
@@ -53,7 +51,7 @@ class ImageGenerationThread(QThread):
                     num_inference_steps=self.params["num_inference_steps"],
                     guidance_scale=self.params["guidance_scale"],
                     prompt_enhancement=self.params["enhance_prompt"],
-                    seed=current_seed
+                    seed=current_seed  # 使用当前批次的种子值
                 )
                 
                 if not result:
@@ -132,7 +130,7 @@ class ImageGenerationThread(QThread):
 class SingleGenTab(QWidget):
     """单图生成标签页"""
     
-    def __init__(self, config, api_manager):
+    def __init__(self, config: ConfigManager, api_manager: APIManager):
         super().__init__()
         self.config = config
         self.api_manager = api_manager
@@ -204,7 +202,7 @@ class SingleGenTab(QWidget):
         batch_label = QLabel("生成数量:")
         self.batch_spin = QSpinBox()
         self.batch_spin.setRange(1, 4)
-        self.batch_spin.setValue(defaults.get("batch_size", 1))
+        self.batch_spin.setValue(1)  # 设置默认值为1
         self.batch_spin.setToolTip("单次最多生成4张图片")
         
         # 生成步数
@@ -221,21 +219,26 @@ class SingleGenTab(QWidget):
         self.guidance_spin.setValue(defaults.get("guidance", 7.5))
         self.guidance_spin.setSingleStep(0.5)
         
-        # 随机种子
-        seed_label = QLabel("种子:")
-        self.seed_spin = QSpinBox()
-        self.seed_spin.setRange(-1, 2147483647)
-        self.seed_spin.setValue(defaults.get("seed", -1))
-        self.seed_spin.setToolTip("-1表示每次生成使用不同的随机种子，0-2147483647为固定种子值")
-        
-        # 添加随机种子按钮
+        # 种子值设置
         seed_layout = QHBoxLayout()
-        seed_layout.addWidget(seed_label)
+        self.random_seed_check = QCheckBox("使用随机种子")
+        self.random_seed_check.stateChanged.connect(self.on_random_seed_changed)
+        
+        # Seed input
+        self.seed_spin = QSpinBox()
+        self.seed_spin.setRange(0, 2147483647)
+        self.seed_spin.setSpecialValueText("")
+        self.seed_spin.setButtonSymbols(QSpinBox.ButtonSymbols.NoButtons)
+        self.seed_spin.setStyleSheet("padding-right: 10px;")
+        
+        # 清空按钮
+        clear_seed_btn = QPushButton("清空")
+        clear_seed_btn.setFixedWidth(50)
+        clear_seed_btn.clicked.connect(lambda: self.seed_spin.clear())
+        
         seed_layout.addWidget(self.seed_spin)
-        randomize_btn = QPushButton("随机")
-        randomize_btn.setMaximumWidth(60)
-        randomize_btn.clicked.connect(self.randomize_seed)
-        seed_layout.addWidget(randomize_btn)
+        seed_layout.addWidget(self.random_seed_check)
+        seed_layout.addWidget(clear_seed_btn)
         
         # 提示增强
         self.enhance_check = QCheckBox("提示增强")
@@ -428,15 +431,16 @@ class SingleGenTab(QWidget):
             size = str(self.size_combo.currentText())
             steps = self.steps_spin.value()
             guidance = self.guidance_spin.value()
-            seed = self.seed_spin.value()
             enhance = self.enhance_check.isChecked()
             batch_size = self.batch_spin.value()
             
             # 生成随机种子
-            if seed == -1:
-                seeds = [random.randint(0, 2147483647) for _ in range(batch_size)]
+            if not self.random_seed_check.isChecked() and self.seed_spin.text():
+                # 使用固定种子值
+                seeds = [self.seed_spin.value()] * batch_size
             else:
-                seeds = [seed] * batch_size
+                # 使用随机种子时，为每张图片生成不同的随机种子
+                seeds = [random.randint(0, 2147483647) for _ in range(batch_size)]
             
             # 构建参数字典
             self.params = {  # 保存参数供后续使用
@@ -446,7 +450,7 @@ class SingleGenTab(QWidget):
                 "image_size": size,
                 "num_inference_steps": steps,
                 "guidance_scale": guidance,
-                "seeds": seeds,
+                "seeds": seeds,  # 保存所有种子值
                 "enhance_prompt": enhance,
                 "batch_size": batch_size
             }
@@ -555,5 +559,38 @@ class SingleGenTab(QWidget):
         self.steps_spin.setValue(defaults.get("steps", 20))
         self.guidance_spin.setValue(defaults.get("guidance", 7.5))
         self.seed_spin.setValue(defaults.get("seed", -1))
+
+    def on_random_seed_changed(self, state):
+        is_checked = state == Qt.CheckState.Checked.value
+        self.seed_spin.setEnabled(not is_checked)
+        if is_checked:
+            self.seed_spin.clear()
+            self.seed_spin.setSpecialValueText("")
+
+    def get_generation_params(self):
+        """获取生成参数"""
+        params = {
+            "prompt": self.prompt_input.toPlainText().strip(),
+            "negative_prompt": self.negative_input.toPlainText().strip(),
+            "model": self.model_combo.currentText(),
+            "size": self.size_combo.currentText(),
+            "num_inference_steps": self.steps_spin.value(),
+            "guidance_scale": self.guidance_spin.value(),
+            "prompt_enhancement": self.enhance_check.isChecked(),
+            "batch_size": self.batch_spin.value()
+        }
+        
+        # 处理种子值
+        if not self.random_seed_check.isChecked() and self.seed_spin.text():
+            # 使用固定种子值
+            params["seed"] = self.seed_spin.value()
+        else:
+            # 使用随机种子时，为每张图片生成不同的随机种子
+            if params["batch_size"] > 1:
+                params["seed"] = [random.randint(0, 2147483647) for _ in range(params["batch_size"])]
+            else:
+                params["seed"] = random.randint(0, 2147483647)
+        
+        return params
 
 # ... existing code ... 

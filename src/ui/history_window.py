@@ -33,11 +33,14 @@ class HistoryWindow(QMainWindow):
         export_btn.clicked.connect(self.export_to_excel)
         delete_btn = QPushButton("删除选中")
         delete_btn.clicked.connect(self.delete_selected)
+        delete_with_files_btn = QPushButton("删除选中(含图片)")
+        delete_with_files_btn.clicked.connect(lambda: self.delete_selected(True))
         refresh_btn = QPushButton("刷新")
         refresh_btn.clicked.connect(self.refresh_table)
         
         toolbar.addWidget(export_btn)
         toolbar.addWidget(delete_btn)
+        toolbar.addWidget(delete_with_files_btn)
         toolbar.addWidget(refresh_btn)
         toolbar.addStretch()
         
@@ -152,29 +155,43 @@ class HistoryWindow(QMainWindow):
         else:
             QMessageBox.warning(self, "错误", "图片文件不存在")
     
-    def delete_selected(self):
-        """删除选中的记录"""
+    def delete_selected(self, delete_files=False):
+        """删除选中的记录
+        Args:
+            delete_files (bool): 是否同时删除图片文件
+        """
         selected_rows = set(item.row() for item in self.table.selectedItems())
         if not selected_rows:
             return
             
+        msg = f"确定要删除选中的 {len(selected_rows)} 条记录"
+        if delete_files:
+            msg += "及其对应的图片文件"
+        msg += "吗？"
+        
         reply = QMessageBox.question(
             self,
             "确认",
-            f"确定要删除选中的 {len(selected_rows)} 条记录吗？",
+            msg,
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
         )
         
         if reply == QMessageBox.StandardButton.Yes:
             # 从后往前删除，避免索引变化
             for row in sorted(selected_rows, reverse=True):
-                # 删除图片文件
-                image_path = self.table.item(row, 5).text()
-                if os.path.exists(image_path):
-                    try:
-                        os.remove(image_path)
-                    except Exception as e:
-                        print(f"删除图片文件失败: {str(e)}")
+                # 获取所有图片路径
+                path_item = self.table.item(row, 5)
+                if path_item:
+                    image_paths = path_item.text().split("\n")
+                    
+                    # 删除图片文件
+                    if delete_files:
+                        for image_path in image_paths:
+                            if os.path.exists(image_path):
+                                try:
+                                    os.remove(image_path)
+                                except Exception as e:
+                                    print(f"删除图片文件失败: {str(e)}")
                 
                 # 从历史记录中删除
                 self.history_manager.records.pop(row)
@@ -183,6 +200,12 @@ class HistoryWindow(QMainWindow):
             self.history_manager.save_records()
             # 刷新表格
             self.refresh_table()
+            
+            QMessageBox.information(
+                self,
+                "提示",
+                f"已删除 {len(selected_rows)} 条记录" + ("及其图片文件" if delete_files else "")
+            )
     
     def export_to_excel(self):
         """导出为Excel"""

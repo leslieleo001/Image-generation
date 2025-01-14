@@ -17,7 +17,6 @@ class ConfigManager:
                 "size": "512x512",
                 "steps": 20,
                 "guidance": 7.5,
-                "seed": -1,
                 "enhance": False
             },
             "paths": {
@@ -78,6 +77,8 @@ class ConfigManager:
             keys = key.split('.')
             value = self.config
             for k in keys:
+                if k not in value:
+                    return default
                 value = value[k]
             return value
         except (KeyError, TypeError):

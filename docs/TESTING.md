@@ -233,4 +233,105 @@
 | 测试项 | 测试步骤 | 预期结果 |
 |-------|---------|----------|
 | 文本格式 | 1. 测试不同格式文本文件<br>2. 检查导入结果 | 正确处理各种文本格式 |
-| Excel版本 | 1. 测试不同版本Excel文件<br>2. 检查导入结果 | 兼容主流Excel版本 | 
+| Excel版本 | 1. 测试不同版本Excel文件<br>2. 检查导入结果 | 兼容主流Excel版本 |
+
+## 设置界面测试
+
+### 种子值设置测试
+```python
+def test_default_seed_setting(settings_tab, mock_config, monkeypatch):
+    """测试默认种子值设置"""
+    # 验证初始状态
+    assert settings_tab.default_seed_spin.text() == ""  # 显示为空
+    assert settings_tab.default_seed_spin.minimum() == 0  # 最小值为0
+    assert settings_tab.default_seed_spin.maximum() == 2147483647
+    
+    # 测试保存空值
+    settings_tab.default_seed_spin.clear()  # 清空值
+    settings_tab.save_settings()
+    assert "seed" not in mock_config.get("defaults", {})  # 空值不保存
+    
+    # 测试设置具体值
+    settings_tab.default_seed_spin.setValue(42)
+    settings_tab.save_settings()
+    assert mock_config.get("defaults", {}).get("seed") == 42  # 保存具体值
+    
+    # 测试加载空值
+    mock_config.config = {"defaults": {}}  # 清空设置
+    settings_tab.load_settings()
+    assert settings_tab.default_seed_spin.text() == ""  # 显示为空
+```
+
+测试要点：
+1. 初始状态验证
+   - 显示为空
+   - 范围正确（0-2147483647）
+   
+2. 空值处理
+   - 可以清空值
+   - 空值不保存到配置
+   
+3. 具体值处理
+   - 可以设置具体值
+   - 具体值正确保存
+   
+4. 加载验证
+   - 正确加载空值
+   - 正确加载具体值
+ 
+## 随机种子功能测试
+
+### 测试用例
+
+1. 随机种子UI测试
+```python
+def test_random_seed_behavior():
+    """测试随机种子复选框行为"""
+    # 初始状态检查
+    assert not tab.random_seed_check.isChecked()
+    assert tab.seed_spin.isEnabled()
+    
+    # 选中随机种子
+    tab.random_seed_check.setChecked(True)
+    assert not tab.seed_spin.isEnabled()
+    assert not tab.seed_spin.text()
+    
+    # 取消选中
+    tab.random_seed_check.setChecked(False)
+    assert tab.seed_spin.isEnabled()
+```
+
+2. 种子值生成测试
+```python
+def test_seed_generation():
+    """测试种子值生成"""
+    # 使用随机种子
+    tab.random_seed_check.setChecked(True)
+    tab.batch_spin.setValue(4)
+    params = tab.get_generation_params()
+    seeds = params["seeds"]
+    assert len(seeds) == 4
+    assert len(set(seeds)) == 4  # 确保所有种子值都不相同
+    
+    # 使用固定种子
+    tab.random_seed_check.setChecked(False)
+    tab.seed_spin.setValue(12345)
+    params = tab.get_generation_params()
+    seeds = params["seeds"]
+    assert len(seeds) == 4
+    assert len(set(seeds)) == 1  # 确保所有种子值相同
+    assert seeds[0] == 12345
+```
+
+3. 清空按钮测试
+```python
+def test_clear_seed():
+    """测试清空种子值"""
+    tab.seed_spin.setValue(12345)
+    assert tab.seed_spin.value() == 12345
+    
+    # 点击清空按钮
+    tab.clear_seed_btn.click()
+    assert not tab.seed_spin.text()
+```
+ 

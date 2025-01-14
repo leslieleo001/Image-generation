@@ -903,3 +903,59 @@ history_item = {
    - 文件名根据命名规则自动生成
    - 确保输出目录有足够空间
 ``` 
+
+## 设置界面
+
+### 种子值设置
+种子值是一个可选参数，用于控制图片生成的随机性：
+
+- 默认值：空（表示使用随机种子）
+- 有效范围：0-2147483647
+- 特殊处理：
+  - 当值为空时，生成时会使用随机种子
+  - 提供清空按钮，方便用户清除输入的值
+  - 保存时只有非空值才会被保存到配置中
+  - 加载时如果配置中没有种子值，则显示为空
+
+示例代码：
+```python
+# 种子值设置
+self.default_seed_spin = QSpinBox()
+self.default_seed_spin.setRange(0, 2147483647)
+self.default_seed_spin.setSpecialValueText("")
+self.default_seed_spin.setButtonSymbols(QSpinBox.ButtonSymbols.NoButtons)
+self.default_seed_spin.setKeyboardTracking(True)
+
+# 清空按钮
+clear_seed_btn = QPushButton("清空")
+clear_seed_btn.clicked.connect(lambda: self.default_seed_spin.clear())
+``` 
+
+## 随机种子功能
+
+### 实现说明
+随机种子功能用于控制图片生成的随机性。实现包括以下几个方面：
+
+1. UI组件
+   - 随机种子复选框：控制是否使用随机种子
+   - 种子值输入框：用于输入固定种子值
+   - 清空按钮：用于重置种子值
+
+2. 种子值处理逻辑
+   - 使用随机种子时：每张图片生成不同的随机种子值
+   - 使用固定种子时：所有图片使用相同的种子值
+   - 种子值范围：0 到 2147483647
+
+3. 参数传递
+   ```python
+   # 使用固定种子值
+   params["seeds"] = [seed_value] * batch_size
+   
+   # 使用随机种子
+   params["seeds"] = [random.randint(0, 2147483647) for _ in range(batch_size)]
+   ```
+
+4. API调用
+   - 每次生成图片时传递对应的种子值
+   - API返回结果中包含使用的种子值
+``` 
