@@ -143,6 +143,8 @@ class BatchGenTab(QWidget):
         
         # 初始化历史记录管理器
         self.history_manager = HistoryManager()
+        # 连接历史记录更新信号
+        self.history_manager.history_updated.connect(self.load_history)
         
         # 初始化界面
         self.init_ui()
@@ -359,12 +361,17 @@ class BatchGenTab(QWidget):
                     scaled_pixmap = pixmap.scaled(80, 80, Qt.AspectRatioMode.KeepAspectRatio)
                     item.setIcon(QIcon(scaled_pixmap))
             
-            # 设置文本
-            timestamp = record.get("timestamp", "")
+            # 设置文本（使用文件名而不是时间戳）
+            filename = "未知"
+            if image_paths:
+                filename = os.path.splitext(os.path.basename(image_paths[0]))[0]
+                if len(image_paths) > 1:
+                    filename += f" (+{len(image_paths)-1})"
+            
             params = record.get("params", {})
             prompt = params.get("prompt", "")[:50]
             image_count = len(image_paths)
-            item.setText(f"{timestamp}\n{prompt}\n[{image_count}张图片]")
+            item.setText(f"{filename}\n{prompt}\n[{image_count}张图片]")
             
             # 设置数据
             item.setData(Qt.ItemDataRole.UserRole, record)

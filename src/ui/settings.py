@@ -4,6 +4,7 @@ from src.utils.config_manager import ConfigManager
 from src.utils.api_client import SiliconFlowAPI, APIError
 from src.utils.api_manager import APIManager
 from PyQt6.QtCore import Qt, QThread, pyqtSignal
+from PyQt6.QtGui import QIntValidator
 
 class APITestThread(QThread):
     """API测试线程"""
@@ -119,22 +120,21 @@ class SettingsTab(QWidget):
         default_layout.addRow("默认引导系数:", self.default_guidance_spin)
 
         # 默认种子值
-        self.default_seed_spin = QSpinBox()
-        self.default_seed_spin.setRange(0, 2147483647)  # 范围从0开始
-        self.default_seed_spin.setSpecialValueText("")  # 设置特殊值文本为空
-        self.default_seed_spin.setButtonSymbols(QSpinBox.ButtonSymbols.NoButtons)  # 隐藏上下按钮
-        self.default_seed_spin.setStyleSheet("QSpinBox { padding-right: 5px; }")  # 调整右侧内边距
-        self.default_seed_spin.setKeyboardTracking(True)  # 允许键盘输入
-        self.default_seed_spin.setToolTip("留空表示使用随机种子，0-2147483647为固定种子值")
+        self.default_seed_input = QLineEdit()
+        self.default_seed_input.setPlaceholderText("留空表示使用随机种子")
+        self.default_seed_input.setToolTip("输入1-9999999999之间的整数作为固定种子值")
+        
+        # 添加文本变化事件处理
+        self.default_seed_input.textChanged.connect(self.validate_seed_input)
 
         # 添加清空按钮
         clear_seed_btn = QPushButton("清空")
         clear_seed_btn.setFixedWidth(50)
-        clear_seed_btn.clicked.connect(lambda: self.default_seed_spin.clear())
+        clear_seed_btn.clicked.connect(lambda: self.default_seed_input.clear())
 
         # 使用水平布局组合种子输入和清空按钮
         seed_layout = QHBoxLayout()
-        seed_layout.addWidget(self.default_seed_spin)
+        seed_layout.addWidget(self.default_seed_input)
         seed_layout.addWidget(clear_seed_btn)
         default_layout.addRow("种子值:", seed_layout)
 
@@ -264,11 +264,10 @@ class SettingsTab(QWidget):
         
         # 默认种子值
         seed = defaults.get("seed")
-        if seed is None:
-            self.default_seed_spin.clear()  # 显示为空
-            self.default_seed_spin.setSpecialValueText("")  # 确保特殊值文本为空
+        if seed is not None:
+            self.default_seed_input.setText(str(seed))
         else:
-            self.default_seed_spin.setValue(seed)
+            self.default_seed_input.clear()
         
         # 加载输出目录
         output_dir = self.config.get("paths.output_dir", "")
@@ -340,8 +339,17 @@ class SettingsTab(QWidget):
             }
             
             # 只有当种子值不为空时才保存
-            if self.default_seed_spin.text():  # 检查是否有文本值
-                defaults["seed"] = self.default_seed_spin.value()
+            seed_text = self.default_seed_input.text().strip()
+            if seed_text:
+                try:
+                    seed_value = int(seed_text)
+                    if 1 <= seed_value <= 9999999999:
+                        defaults["seed"] = seed_value
+                    else:
+                        raise ValueError("种子值超出范围")
+                except ValueError:
+                    QMessageBox.warning(self, "错误", "种子值必须是1-9999999999之间的整数")
+                    return
             
             self.config.set("defaults", defaults)
             
@@ -369,3 +377,23 @@ class SettingsTab(QWidget):
             
         except Exception as e:
             QMessageBox.warning(self, "错误", f"保存设置失败: {str(e)}") 
+    
+    def validate_seed_input(self, text):
+        """验证种子值输入"""
+        if not text:  # 允许空值
+            return
+            
+        # 只允许输入数字
+        if not text.isdigit():
+            self.default_seed_input.setText(text.rstrip("非数字字符"))
+            return
+            
+        # 验证数值范围
+        try:
+            value = int(text)
+            if value > 9999999999:
+                self.default_seed_input.setText("9999999999")
+            elif value < 1 and text != "":
+                self.default_seed_input.setText("1")
+        except ValueError:
+            pass 

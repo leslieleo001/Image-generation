@@ -959,3 +959,154 @@ clear_seed_btn.clicked.connect(lambda: self.default_seed_spin.clear())
    - 每次生成图片时传递对应的种子值
    - API返回结果中包含使用的种子值
 ``` 
+
+## 历史记录管理
+
+### 拖放排序功能实现
+
+历史记录管理界面支持通过拖放操作来调整记录的顺序。实现细节如下：
+
+#### 拖放功能的核心组件
+
+1. `DraggableTableWidget` 类
+   - 继承自 `QTableWidget`
+   - 实现了自定义的拖放处理逻辑
+   - 提供了拖放过程中的视觉反馈
+
+2. 关键属性
+   ```python
+   self.drag_source_row = -1  # 拖动源行
+   self.drop_indicator_row = -1  # 拖放指示器位置
+   ```
+
+3. 拖放事件处理
+   ```python
+   def startDrag(self, supportedActions)  # 开始拖动时记录源行
+   def dragEnterEvent(self, event)        # 处理拖动进入事件
+   def dragMoveEvent(self, event)         # 处理拖动移动事件
+   def dropEvent(self, event)             # 处理拖放完成事件
+   def paintEvent(self, event)            # 绘制拖放指示器
+   ```
+
+#### 数据同步机制
+
+1. 记录移动
+   ```python
+   # 移动记录
+   record = self.history_manager.records.pop(self.drag_source_row)
+   self.history_manager.records.insert(drop_row, record)
+   ```
+
+2. 界面更新
+   - 根据 `history_manager.records` 重新填充表格内容
+   - 保持复选框状态
+   - 重新创建缩略图
+   - 更新其他列的文本内容
+
+3. 信号处理
+   ```python
+   self.blockSignals(True)   # 暂时阻止信号
+   # 执行更新操作
+   self.blockSignals(False)  # 恢复信号
+   self.history_manager.history_updated.emit()  # 发送更新信号
+   ```
+
+#### 视觉反馈
+
+1. 拖放指示器
+   - 水平线显示目标位置
+   - 左右两侧的三角形标记
+   - 使用 `QPainter` 绘制
+
+2. 样式设置
+   ```python
+   self.setStyleSheet("""
+       QTableWidget {
+           gridline-color: #d0d0d0;
+       }
+       QTableWidget::item:selected {
+           background-color: #0078d7;
+           color: white;
+       }
+       QTableWidget::item:hover {
+           background-color: #e5f3ff;
+       }
+   """)
+   ```
+
+#### 性能优化
+
+1. 滚动位置保持
+   ```python
+   scrollbar = self.verticalScrollBar()
+   scroll_pos = scrollbar.value()
+   # 执行更新操作
+   scrollbar.setValue(scroll_pos)
+   ```
+
+2. 选中状态维护
+   ```python
+   self.selectRow(drop_row)  # 选中移动后的行
+   ```
+
+3. 错误处理
+   ```python
+   try:
+       # 拖放处理逻辑
+   except Exception as e:
+       print(f"拖放处理出错: {str(e)}")
+       event.ignore()
+   finally:
+       self.drag_source_row = -1
+       self.drop_indicator_row = -1
+       self.viewport().update()
+   ```
+
+## 种子值输入实现
+### 实现方案
+为了支持更大范围的种子值(1-9999999999)，我们使用了 QLineEdit 而不是 QSpinBox 来实现种子值的输入。主要考虑：
+
+1. QSpinBox 和 QIntValidator 都受限于 32 位整数范围(-2147483648 到 2147483647)
+2. QLineEdit 提供更灵活的输入验证机制
+
+### 关键代码
+```python
+# 初始化输入框
+self.default_seed_input = QLineEdit()
+self.default_seed_input.setPlaceholderText("留空表示使用随机种子")
+self.default_seed_input.setToolTip("输入1-9999999999之间的整数作为固定种子值")
+
+# 添加文本变化事件处理
+self.default_seed_input.textChanged.connect(self.validate_seed_input)
+
+def validate_seed_input(self, text):
+    """验证种子值输入"""
+    if not text:  # 允许空值
+        return
+        
+    # 只允许输入数字
+    if not text.isdigit():
+        self.default_seed_input.setText(text.rstrip("非数字字符"))
+        return
+        
+    # 验证数值范围
+    try:
+        value = int(text)
+        if value > 9999999999:
+            self.default_seed_input.setText("9999999999")
+        elif value < 1 and text != "":
+            self.default_seed_input.setText("1")
+    except ValueError:
+        pass
+```
+
+### 验证规则
+1. 允许输入为空（表示使用随机种子）
+2. 只允许输入数字
+3. 输入范围限制在 1-9999999999 之间
+4. 自动纠正超出范围的输入值
+
+### 数据处理
+1. 保存设置时会验证输入值的有效性
+2. 只有在输入非空且值有效时才保存种子值
+3. 加载设置时会正确显示已保存的种子值

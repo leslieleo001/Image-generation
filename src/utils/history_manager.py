@@ -10,8 +10,10 @@ class HistoryManager(QObject):
     def __init__(self, history_file=None):
         super().__init__()
         if history_file is None:
-            # 使用默认路径
-            self.history_file = Path("src/main/history.json")
+            # 使用配置目录
+            config_dir = Path.home() / '.image_generator'
+            config_dir.mkdir(parents=True, exist_ok=True)
+            self.history_file = config_dir / 'history.json'
         else:
             self.history_file = Path(history_file)
         self.records = []
