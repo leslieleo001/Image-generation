@@ -248,66 +248,81 @@ class HistoryWindow(QMainWindow):
     def init_ui(self):
         """初始化界面"""
         self.setWindowTitle("历史记录管理")
-        self.resize(1200, 800)
+        self.resize(1200, 600)
         
         # 创建中心部件
         central_widget = QWidget()
         self.setCentralWidget(central_widget)
-        layout = QVBoxLayout(central_widget)
+        
+        # 创建布局
+        layout = QVBoxLayout()
+        central_widget.setLayout(layout)
         
         # 创建工具栏
         toolbar = QHBoxLayout()
+        
+        # 全选/取消全选按钮
         select_all_btn = QPushButton("全选")
         select_all_btn.clicked.connect(self.select_all_records)
         unselect_all_btn = QPushButton("取消全选")
         unselect_all_btn.clicked.connect(self.unselect_all_records)
-        export_btn = QPushButton("导出选中Excel")
-        export_btn.clicked.connect(self.export_to_excel)
-        delete_btn = QPushButton("删除选中")
-        delete_btn.clicked.connect(self.delete_selected)
-        delete_with_files_btn = QPushButton("删除选中(含图片)")
-        delete_with_files_btn.clicked.connect(lambda: self.delete_selected(True))
-        refresh_btn = QPushButton("刷新")
-        refresh_btn.clicked.connect(self.refresh_table)
         
+        # 删除按钮
+        delete_btn = QPushButton("删除记录")
+        delete_btn.clicked.connect(lambda: self.delete_selected(False))
+        delete_with_files_btn = QPushButton("删除记录和文件")
+        delete_with_files_btn.clicked.connect(lambda: self.delete_selected(True))
+        
+        # 导出按钮
+        export_btn = QPushButton("导出到Excel")
+        export_btn.clicked.connect(self.export_to_excel)
+        
+        # 添加按钮到工具栏
         toolbar.addWidget(select_all_btn)
         toolbar.addWidget(unselect_all_btn)
-        toolbar.addWidget(export_btn)
         toolbar.addWidget(delete_btn)
         toolbar.addWidget(delete_with_files_btn)
-        toolbar.addWidget(refresh_btn)
+        toolbar.addWidget(export_btn)
         toolbar.addStretch()
-        
-        layout.addLayout(toolbar)
         
         # 创建表格
         self.table = DraggableTableWidget(self)
         self.table.history_manager = self.history_manager
-        self.table.setColumnCount(8)  # 增加一列用于复选框
+        
+        # 设置表格属性
+        self.table.setColumnCount(8)
         self.table.setHorizontalHeaderLabels([
-            "选择", "缩略图", "名称", "提示词", "模型", "参数", "保存路径", "操作"
+            "", "预览", "名称", "提示词", "模型", "参数", "保存路径", "操作"
         ])
         
-        # 设置表格列宽
-        self.table.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeMode.Fixed)
-        self.table.setColumnWidth(0, 50)  # 复选框列宽
-        self.table.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeMode.Fixed)
-        self.table.setColumnWidth(1, 100)  # 缩略图列宽
-        self.table.horizontalHeader().setSectionResizeMode(2, QHeaderView.ResizeMode.ResizeToContents)
-        self.table.horizontalHeader().setSectionResizeMode(3, QHeaderView.ResizeMode.Stretch)
-        self.table.horizontalHeader().setSectionResizeMode(4, QHeaderView.ResizeMode.ResizeToContents)
-        self.table.horizontalHeader().setSectionResizeMode(5, QHeaderView.ResizeMode.ResizeToContents)
-        self.table.horizontalHeader().setSectionResizeMode(6, QHeaderView.ResizeMode.ResizeToContents)
-        self.table.horizontalHeader().setSectionResizeMode(7, QHeaderView.ResizeMode.Fixed)
-        self.table.setColumnWidth(7, 100)  # 操作列宽
+        # 设置表格选择模式
+        self.table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
+        self.table.setSelectionMode(QTableWidget.SelectionMode.ExtendedSelection)
         
-        # 添加右键菜单
+        # 设置列宽
+        self.table.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeMode.Fixed)  # 复选框列
+        self.table.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeMode.Fixed)  # 预览列
+        self.table.horizontalHeader().setSectionResizeMode(2, QHeaderView.ResizeMode.ResizeToContents)  # 名称列
+        self.table.horizontalHeader().setSectionResizeMode(3, QHeaderView.ResizeMode.Stretch)  # 提示词列
+        self.table.horizontalHeader().setSectionResizeMode(4, QHeaderView.ResizeMode.ResizeToContents)  # 模型列
+        self.table.horizontalHeader().setSectionResizeMode(5, QHeaderView.ResizeMode.ResizeToContents)  # 参数列
+        self.table.horizontalHeader().setSectionResizeMode(6, QHeaderView.ResizeMode.ResizeToContents)  # 路径列
+        self.table.horizontalHeader().setSectionResizeMode(7, QHeaderView.ResizeMode.Fixed)  # 操作列
+        
+        # 设置固定列宽
+        self.table.setColumnWidth(0, 30)  # 复选框列
+        self.table.setColumnWidth(1, 250)  # 预览列
+        self.table.setColumnWidth(7, 100)  # 操作列
+        
+        # 启用右键菜单
         self.table.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         self.table.customContextMenuRequested.connect(self.show_context_menu)
         
+        # 添加到布局
+        layout.addLayout(toolbar)
         layout.addWidget(self.table)
         
-        # 加载数据
+        # 刷新表格
         self.refresh_table()
         
     def select_all_records(self):
@@ -410,19 +425,17 @@ class HistoryWindow(QMainWindow):
     
     def delete_selected(self, delete_files=False):
         """删除选中的记录"""
-        selected_rows = set()
-        for item in self.table.selectedItems():
-            selected_rows.add(item.row())
-        
-        if not selected_rows:
-            QMessageBox.warning(self, "提示", "请先选择要删除的记录")
+        # 获取选中的行
+        checked_rows = self.get_checked_rows()
+        if not checked_rows:
+            QMessageBox.warning(self, "警告", "请先选择要删除的记录")
             return
-        
+            
         # 确认删除
-        msg = "确定要删除选中的记录吗？"
+        msg = f"确定要删除选中的 {len(checked_rows)} 条记录吗？"
         if delete_files:
-            msg += "\n注意：相关的图片文件也会被删除！"
-        
+            msg += "\n同时也会删除对应的图片文件！"
+            
         reply = QMessageBox.question(
             self,
             "确认删除",
@@ -431,29 +444,30 @@ class HistoryWindow(QMainWindow):
         )
         
         if reply == QMessageBox.StandardButton.Yes:
-            # 获取要删除的记录索引
-            rows = sorted(list(selected_rows), reverse=True)
-            for row in rows:
-                # 获取记录
-                record = self.history_manager.records[row]
-                
-                # 删除文件
+            try:
+                # 如果需要删除文件
                 if delete_files:
-                    for image_path in record.get("image_paths", []):
-                        try:
-                            if os.path.exists(image_path):
-                                os.remove(image_path)
-                        except Exception as e:
-                            print(f"删除文件失败: {str(e)}")
+                    for row in checked_rows:
+                        record = self.history_manager.records[row]
+                        image_paths = record.get("image_paths", [])
+                        if not image_paths and "image_path" in record:
+                            image_paths = [record["image_path"]]
+                        
+                        for path in image_paths:
+                            try:
+                                if os.path.exists(path):
+                                    os.remove(path)
+                            except Exception as e:
+                                print(f"删除文件失败: {path}, 错误: {e}")
                 
                 # 删除记录
-                self.history_manager.records.pop(row)
-            
-            # 刷新表格
-            self.refresh_table()
-            
-            # 保存更改
-            self.history_manager.save_records()
+                self.history_manager.delete_records(checked_rows)
+                
+                # 刷新表格
+                self.refresh_table()
+                
+            except Exception as e:
+                QMessageBox.critical(self, "错误", f"删除记录失败: {str(e)}")
     
     def export_to_excel(self):
         """导出选中记录为Excel（包含原图）"""

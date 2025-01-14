@@ -8,20 +8,25 @@ class ConfigManager:
         self.config_dir = Path.home() / '.image_generator'
         self.config_file = self.config_dir / 'config.json'
         self.defaults = {
+            "api_key": "",
             "models": [
                 "stabilityai/stable-diffusion-3-5-large",
                 "stabilityai/stable-diffusion-3-medium",
                 "stabilityai/stable-diffusion-3-5-large-turbo"
             ],
             "defaults": {
-                "size": "512x512",
+                "model": "stabilityai/stable-diffusion-3-5-large",
+                "size": "1024x1024",
                 "steps": 20,
                 "guidance": 7.5,
                 "enhance": False,
-                "negative_prompt": ""
+                "negative_prompt": "",
+                "batch_size": 1,
+                "seed": -1,
+                "use_random_seed": True
             },
             "paths": {
-                "output_dir": "",
+                "output_dir": str(Path.home() / "Pictures" / "AI生成"),
                 "presets_dir": "presets",
                 "history_file": "history.json"
             },
@@ -30,7 +35,13 @@ class ConfigManager:
             },
             "naming_rule": {
                 "preset": "默认",
-                "custom": "{timestamp}_{prompt}_{model}_{size}_{seed}"
+                "custom": "{timestamp}_{prompt}_{model}_{size}_{seed}",
+                "presets": [
+                    "默认",
+                    "{timestamp}_{prompt}_{model}_{size}_{seed}",
+                    "{date}_{time}_{prompt}_{model}_{size}",
+                    "自定义规则"
+                ]
             }
         }
         self.config = self.load_config()
@@ -100,6 +111,9 @@ class ConfigManager:
                 
             # 设置最后一个键的值
             config[keys[-1]] = value
+            
+            # 立即保存配置
+            self.save_config()
             return True
         except Exception as e:
             print(f"设置配置项失败: {e}")

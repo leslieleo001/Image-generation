@@ -76,7 +76,7 @@ class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
         self.setWindowTitle("AI图片生成助手")
-        self.resize(1200, 800)
+        self.resize(800, 600)
         
         # 初始化配置管理器
         self.config = ConfigManager()
@@ -113,3 +113,12 @@ class MainWindow(QMainWindow):
         
         # 设置中心部件
         self.setCentralWidget(tabs) 
+
+if __name__ == "__main__":
+    import sys
+    from PyQt6.QtWidgets import QApplication
+    
+    app = QApplication(sys.argv)
+    window = MainWindow()
+    window.show()
+    sys.exit(app.exec()) 

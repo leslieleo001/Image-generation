@@ -62,3 +62,21 @@ class HistoryManager(QObject):
     def get_records(self):
         """获取所有历史记录"""
         return self.records 
+            
+    def delete_records(self, indices):
+        """删除指定的历史记录"""
+        try:
+            # 将索引从大到小排序，这样删除时不会影响其他索引
+            sorted_indices = sorted(indices, reverse=True)
+            
+            # 删除指定的记录
+            for index in sorted_indices:
+                if 0 <= index < len(self.records):
+                    self.records.pop(index)
+            
+            # 保存更改并发送更新信号
+            self.save_records()
+            self.history_updated.emit()
+            
+        except Exception as e:
+            print(f"删除历史记录失败: {str(e)}") 

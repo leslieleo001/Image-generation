@@ -24,7 +24,7 @@ class APIManager(QObject):
         Returns:
             SiliconFlowAPI: API客户端实例
         """
-        api_key = self.config.get("api.key", "")
+        api_key = self.config.get("api_key", "")
         
         # 如果API密钥为空，返回None
         if not api_key:

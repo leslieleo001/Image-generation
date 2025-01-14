@@ -180,21 +180,21 @@ class SettingsTab(QWidget):
         
         # 默认生成数量
         self.default_batch_spin = QSpinBox()
-        self.default_batch_spin.setRange(1, 4)
+        self.default_batch_spin.setRange(1, 4)  # 生成数量范围：1-4（硅基流动API限制）
         self.default_batch_spin.setValue(1)
         defaults_form.addRow("默认生成数量:", self.default_batch_spin)
         
         # 默认步数
         self.default_steps_spin = QSpinBox()
-        self.default_steps_spin.setRange(1, 50)
+        self.default_steps_spin.setRange(1, 50)  # 生成步数范围：1-50
         self.default_steps_spin.setValue(20)
         defaults_form.addRow("默认步数:", self.default_steps_spin)
         
         # 默认引导系数
         self.default_guidance_spin = QDoubleSpinBox()
-        self.default_guidance_spin.setRange(0, 20)
+        self.default_guidance_spin.setRange(0.1, 20.0)  # 引导系数范围：0.1-20.0
         self.default_guidance_spin.setValue(7.5)
-        self.default_guidance_spin.setSingleStep(0.5)
+        self.default_guidance_spin.setSingleStep(0.1)  # 调整步长为0.1
         defaults_form.addRow("默认引导系数:", self.default_guidance_spin)
         
         # 默认负面提示词
@@ -248,50 +248,64 @@ class SettingsTab(QWidget):
             api_key = self.config.get("api_key", "")
             self.api_key_input.setText(api_key)
             
+            # 加载输出目录
+            output_dir = self.config.get("paths.output_dir", "")
+            self.output_dir.setText(output_dir)
+            
+            # 加载命名规则
+            naming_preset = self.config.get("naming_rule.preset", "默认")
+            custom_rule = self.config.get("naming_rule.custom", "")
+            saved_presets = self.config.get("naming_rule.presets", [])
+            
+            # 清空并重新添加预设规则
+            self.naming_rule_combo.clear()
+            self.naming_rule_combo.addItems([
+                "默认",
+                "{timestamp}_{prompt}_{model}_{size}_{seed}",
+                "{date}_{time}_{prompt}_{model}_{size}"
+            ])
+            
+            # 添加保存的预设规则
+            if saved_presets:
+                for preset in saved_presets:
+                    if preset not in ["默认", "自定义规则"] and \
+                       self.naming_rule_combo.findText(preset) == -1:
+                        self.naming_rule_combo.insertItem(
+                            self.naming_rule_combo.count() - 1, 
+                            preset
+                        )
+            
+            # 添加"自定义规则"选项
+            self.naming_rule_combo.addItem("自定义规则")
+            
+            # 设置当前选择的规则
+            index = self.naming_rule_combo.findText(naming_preset)
+            if index >= 0:
+                self.naming_rule_combo.setCurrentIndex(index)
+            
+            # 设置自定义规则
+            self.custom_rule_input.setText(custom_rule)
+            if naming_preset == "自定义规则":
+                self.custom_rule_input.setEnabled(True)
+            
             # 加载默认参数
             defaults = self.config.get("defaults", {})
-            
-            # 更新尺寸
-            default_size = defaults.get("size", "1024x1024")
-            index = self.default_size_combo.findText(default_size)
-            if index >= 0:
-                self.default_size_combo.setCurrentIndex(index)
-            
-            # 更新其他参数
+            self.default_model_combo.setCurrentText(defaults.get("model", ""))
+            self.default_size_combo.setCurrentText(defaults.get("size", ""))
+            self.default_batch_spin.setValue(defaults.get("batch_size", 1))
             self.default_steps_spin.setValue(defaults.get("steps", 20))
             self.default_guidance_spin.setValue(defaults.get("guidance", 7.5))
             self.default_negative_prompt.setText(defaults.get("negative_prompt", ""))
             
-            # 更新种子值设置
-            use_random = defaults.get("use_random_seed", False)
-            self.default_random_seed_check.setChecked(use_random)
-            
-            if use_random:
-                self.default_seed_input.clear()
-            else:
-                seed = defaults.get("seed")
-                if seed is not None:
-                    self.default_seed_input.setText(str(seed))
-                else:
-                    self.default_seed_input.clear()
-            
-            # 加载路径设置
-            paths = self.config.get("paths", {})
-            self.output_dir.setText(paths.get("output_dir", ""))
-            
-            # 加载命名规则
-            naming_rule = self.config.get("naming.rule", "{timestamp}_{prompt}_{model}_{size}_{seed}")
-            # 检查是否是预设规则
-            index = self.naming_rule_combo.findText(naming_rule)
-            if index >= 0:
-                self.naming_rule_combo.setCurrentIndex(index)
-            else:
-                # 如果不是预设规则，设置为自定义规则
-                self.naming_rule_combo.setCurrentText("自定义规则")
-                self.custom_rule_input.setText(naming_rule)
+            # 加载种子设置
+            seed = defaults.get("seed", -1)
+            use_random_seed = defaults.get("use_random_seed", True)
+            self.default_seed_input.setText(str(seed) if seed != -1 else "")
+            self.default_random_seed_check.setChecked(use_random_seed)
+            self.default_seed_input.setEnabled(not use_random_seed)
             
         except Exception as e:
-            QMessageBox.warning(self, "错误", f"加载设置失败: {str(e)}")
+            print(f"加载设置失败: {e}")
     
     def select_output_dir(self):
         dir_path = QFileDialog.getExistingDirectory(self, "选择输出目录")
@@ -320,7 +334,7 @@ class SettingsTab(QWidget):
         """API测试成功处理"""
         # 保存 API 密钥并刷新 API 管理器
         api_key = self.api_key_input.text().strip()
-        self.config.set("api.key", api_key)
+        self.config.set("api_key", api_key)
         self.api_manager.refresh_api()
         QMessageBox.information(self, "成功", "API密钥验证成功")
     
@@ -338,8 +352,20 @@ class SettingsTab(QWidget):
         """保存设置"""
         try:
             # 保存API密钥
-            api_key = self.api_key_input.text().strip()
-            self.config.set("api.key", api_key)
+            self.config.set("api_key", self.api_key_input.text())
+            
+            # 保存输出目录
+            self.config.set("paths.output_dir", self.output_dir.text())
+            
+            # 保存命名规则
+            current_rule = self.naming_rule_combo.currentText()
+            self.config.set("naming_rule.preset", current_rule)
+            
+            # 如果是自定义规则，保存自定义规则内容
+            if current_rule == "自定义规则":
+                self.config.set("naming_rule.custom", self.custom_rule_input.text())
+            else:
+                self.config.set("naming_rule.custom", current_rule)
             
             # 保存默认参数
             defaults = {
@@ -348,48 +374,19 @@ class SettingsTab(QWidget):
                 "batch_size": self.default_batch_spin.value(),
                 "steps": self.default_steps_spin.value(),
                 "guidance": self.default_guidance_spin.value(),
-                "negative_prompt": self.default_negative_prompt.text().strip(),
+                "negative_prompt": self.default_negative_prompt.text(),
+                "seed": int(self.default_seed_input.text()) if self.default_seed_input.text() else -1,
                 "use_random_seed": self.default_random_seed_check.isChecked()
             }
-            
-            # 只有在不使用随机种子且有输入值时才保存种子值
-            if not self.default_random_seed_check.isChecked() and self.default_seed_input.text().strip():
-                try:
-                    seed_value = int(self.default_seed_input.text().strip())
-                    if 1 <= seed_value <= 9999999998:  # 修改为正确的范围
-                        defaults["seed"] = seed_value
-                except ValueError:
-                    pass
-            
             self.config.set("defaults", defaults)
-            
-            # 保存输出目录
-            output_dir = self.output_dir.text().strip()
-            if output_dir:
-                self.config.set("paths.output_dir", output_dir)
-            
-            # 保存命名规则
-            rule = self.naming_rule_combo.currentText()
-            if rule == "自定义规则":
-                rule = self.custom_rule_input.text().strip()
-                if not rule:
-                    QMessageBox.warning(self, "错误", "自定义命名规则不能为空")
-                    return
-            self.config.set("naming.rule", rule)
-            
-            # 保存配置
-            self.config.save_config()
-            
-            # 刷新API管理器
-            self.api_manager.refresh_api()
             
             # 发送设置更新信号
             self.settings_updated.emit()
             
-            QMessageBox.information(self, "提示", "设置已保存")
+            QMessageBox.information(self, "成功", "设置已保存")
             
         except Exception as e:
-            QMessageBox.warning(self, "错误", f"保存设置失败: {str(e)}") 
+            QMessageBox.warning(self, "错误", f"保存设置失败: {e}")
     
     def on_random_seed_changed(self, state):
         """处理随机种子复选框状态变化"""
@@ -435,4 +432,23 @@ class SettingsTab(QWidget):
         
         # 选择新添加的规则
         self.naming_rule_combo.setCurrentText(custom_rule)
-        QMessageBox.information(self, "成功", "自定义规则已添加到预设") 
+        
+        # 保存到配置文件
+        try:
+            # 获取当前所有预设规则
+            presets = []
+            for i in range(self.naming_rule_combo.count()):
+                presets.append(self.naming_rule_combo.itemText(i))
+            
+            # 保存命名规则配置
+            self.config.set("naming_rule.preset", custom_rule)
+            self.config.set("naming_rule.custom", custom_rule)
+            self.config.set("naming_rule.presets", presets)
+            
+            # 发送设置更新信号
+            self.settings_updated.emit()
+            
+            QMessageBox.information(self, "成功", "自定义规则已添加到预设并保存")
+        except Exception as e:
+            QMessageBox.warning(self, "错误", f"保存自定义规则失败: {e}")
+            return 

@@ -16,17 +16,22 @@ def app():
 def mock_config():
     config = ConfigManager()
     config.defaults = {
+        "api_key": "",
         "models": [
             "stabilityai/stable-diffusion-3-5-large",
             "stabilityai/stable-diffusion-3-medium",
             "stabilityai/stable-diffusion-3-5-large-turbo"
         ],
         "defaults": {
-            "size": "512x512",
+            "model": "stabilityai/stable-diffusion-3-5-large",
+            "size": "1024x1024",
             "steps": 20,
             "guidance": 7.5,
-            "enhance": False
-            # 移除默认种子值
+            "enhance": False,
+            "negative_prompt": "",
+            "batch_size": 1,
+            "seed": -1,
+            "use_random_seed": False
         },
         "paths": {
             "output_dir": "",
@@ -41,7 +46,7 @@ def mock_config():
             "custom": "{timestamp}_{prompt}_{model}_{size}_{seed}"
         }
     }
-    config.config = config.defaults.copy()  # 使用默认配置初始化
+    config.config = config.defaults.copy()
     return config
 
 @pytest.fixture
@@ -78,7 +83,7 @@ def test_save_settings(settings_tab, monkeypatch):
     settings_tab.save_settings()
     
     # 验证配置是否正确保存
-    assert settings_tab.config.get("api.key") == "test_key"
+    assert settings_tab.config.get("api_key") == "test_key"
     assert settings_tab.config.get("paths.output_dir") == "/test/path"
     
     # 验证是否显示成功消息

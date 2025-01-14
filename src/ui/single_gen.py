@@ -237,9 +237,7 @@ class SingleGenTab(QWidget):
         ])
         # 设置默认模型
         default_model = defaults.get("model", "stabilityai/stable-diffusion-3-5-large")
-        index = self.model_combo.findText(default_model)
-        if index >= 0:
-            self.model_combo.setCurrentIndex(index)
+        self.model_combo.setCurrentText(default_model)
         
         # 图片尺寸选择
         size_label = QLabel("尺寸:")
@@ -254,65 +252,52 @@ class SingleGenTab(QWidget):
         ])
         # 设置默认尺寸
         default_size = defaults.get("size", "1024x1024")
-        index = self.size_combo.findText(default_size)
-        if index >= 0:
-            self.size_combo.setCurrentIndex(index)
+        self.size_combo.setCurrentText(default_size)
         
         # 生成数量
         batch_label = QLabel("生成数量:")
         self.batch_spin = QSpinBox()
-        self.batch_spin.setRange(1, 4)
-        self.batch_spin.setValue(1)  # 设置默认值为1
-        self.batch_spin.setToolTip("单次最多生成4张图片")
+        self.batch_spin.setRange(1, 4)  # 生成数量范围：1-4（硅基流动API限制）
+        self.batch_spin.setValue(defaults.get("batch_size", 1))
         
         # 生成步数
         steps_label = QLabel("步数:")
         self.steps_spin = QSpinBox()
-        self.steps_spin.setRange(1, 50)
+        self.steps_spin.setRange(1, 50)  # 生成步数范围：1-50
         self.steps_spin.setValue(defaults.get("steps", 20))
-        self.steps_spin.setToolTip("turbo模型固定为4步")
         
         # 引导系数
         guidance_label = QLabel("引导系数:")
         self.guidance_spin = QDoubleSpinBox()
-        self.guidance_spin.setRange(0, 20)
+        self.guidance_spin.setRange(0.1, 20.0)  # 引导系数范围：0.1-20.0
         self.guidance_spin.setValue(defaults.get("guidance", 7.5))
-        self.guidance_spin.setSingleStep(0.5)
+        self.guidance_spin.setSingleStep(0.1)  # 调整步长为0.1
         
         # 种子值设置
+        seed_label = QLabel("种子值:")
         seed_layout = QHBoxLayout()
+        self.seed_input = QLineEdit()
+        self.seed_input.setPlaceholderText("留空表示使用随机种子")
+        self.seed_input.textChanged.connect(self.validate_seed_input)
+        
+        # 随机种子复选框
         self.random_seed_check = QCheckBox("使用随机种子")
         self.random_seed_check.stateChanged.connect(self.on_random_seed_changed)
         
-        self.seed_input = QLineEdit()
-        self.seed_input.setPlaceholderText("留空表示使用随机种子")
-        self.seed_input.setToolTip("输入1-9999999999之间的整数作为固定种子值")
-        self.seed_input.textChanged.connect(self.validate_seed_input)
-        
-        # 清空按钮
-        clear_seed_btn = QPushButton("清空")
-        clear_seed_btn.setFixedWidth(50)
-        clear_seed_btn.clicked.connect(lambda: self.seed_input.clear())
+        # 设置默认种子值
+        use_random_seed = defaults.get("use_random_seed", True)
+        self.random_seed_check.setChecked(use_random_seed)
+        seed = defaults.get("seed", -1)
+        if seed != -1 and not use_random_seed:
+            self.seed_input.setText(str(seed))
+        self.seed_input.setEnabled(not use_random_seed)
         
         seed_layout.addWidget(self.seed_input)
-        seed_layout.addWidget(clear_seed_btn)
+        seed_layout.addWidget(self.random_seed_check)
         
-        seed_group = QVBoxLayout()
-        seed_group.addWidget(self.random_seed_check)
-        seed_group.addLayout(seed_layout)
-        
-        # 提示增强
-        self.enhance_check = QCheckBox("提示增强")
-        self.enhance_check.setToolTip("启用后将优化提示词以提高生成质量")
-        
-        # 生成按钮和进度标签
-        gen_progress_layout = QVBoxLayout()
-        self.generate_btn = QPushButton("生成图片")
-        self.generate_btn.clicked.connect(self.on_generate_clicked)
-        self.progress_label = QLabel("")
-        self.progress_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        gen_progress_layout.addWidget(self.generate_btn)
-        gen_progress_layout.addWidget(self.progress_label)
+        # 提示词增强
+        self.enhance_check = QCheckBox("提示词增强")
+        self.enhance_check.setChecked(defaults.get("enhance", False))
         
         # 添加控件到左侧面板
         left_layout.addWidget(prompt_label)
@@ -329,9 +314,15 @@ class SingleGenTab(QWidget):
         left_layout.addWidget(self.steps_spin)
         left_layout.addWidget(guidance_label)
         left_layout.addWidget(self.guidance_spin)
-        left_layout.addLayout(seed_group)
+        left_layout.addWidget(seed_label)
+        left_layout.addLayout(seed_layout)
         left_layout.addWidget(self.enhance_check)
-        left_layout.addLayout(gen_progress_layout)
+        
+        # 生成按钮
+        self.generate_btn = QPushButton("生成")
+        self.generate_btn.clicked.connect(self.on_generate_clicked)
+        left_layout.addWidget(self.generate_btn)
+        
         left_layout.addStretch()
         left_panel.setLayout(left_layout)
         
@@ -354,18 +345,24 @@ class SingleGenTab(QWidget):
         self.history_list.setSpacing(5)
         self.history_list.itemDoubleClicked.connect(self.on_history_item_double_clicked)
         
+        # 生成进度标签
+        self.progress_label = QLabel("")
+        self.progress_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        
         # 清空历史按钮
         clear_history_btn = QPushButton("清空历史")
         clear_history_btn.clicked.connect(self.on_clear_history_clicked)
         
         right_layout.addLayout(history_header)
         right_layout.addWidget(self.history_list)
+        right_layout.addWidget(self.progress_label)
         right_layout.addWidget(clear_history_btn)
         right_panel.setLayout(right_layout)
         
-        # 设置布局
+        # 设置左右面板的比例
         layout.addWidget(left_panel, stretch=2)
         layout.addWidget(right_panel, stretch=1)
+        
         self.setLayout(layout)
         
         # 加载历史记录
@@ -374,6 +371,52 @@ class SingleGenTab(QWidget):
         # 连接模型选择变更事件
         self.model_combo.currentTextChanged.connect(self.on_model_changed)
         
+    def update_defaults(self):
+        """更新默认值"""
+        try:
+            defaults = self.config.get("defaults", {})
+            
+            # 更新模型
+            default_model = defaults.get("model", "")
+            if default_model:
+                self.model_combo.setCurrentText(default_model)
+            
+            # 更新尺寸
+            default_size = defaults.get("size", "")
+            if default_size:
+                self.size_combo.setCurrentText(default_size)
+            
+            # 更新生成数量
+            self.batch_spin.setValue(defaults.get("batch_size", 1))
+            
+            # 更新步数
+            self.steps_spin.setValue(defaults.get("steps", 20))
+            
+            # 更新引导系数
+            self.guidance_spin.setValue(defaults.get("guidance", 7.5))
+            
+            # 更新负面提示词
+            default_negative = defaults.get("negative_prompt", "")
+            if default_negative:
+                self.negative_input.setText(default_negative)
+            
+            # 更新种子设置
+            use_random_seed = defaults.get("use_random_seed", True)
+            seed = defaults.get("seed", -1)
+            
+            self.random_seed_check.setChecked(use_random_seed)
+            if seed != -1 and not use_random_seed:
+                self.seed_input.setText(str(seed))
+            else:
+                self.seed_input.clear()
+            self.seed_input.setEnabled(not use_random_seed)
+            
+            # 更新提示词增强
+            self.enhance_check.setChecked(defaults.get("enhance", False))
+            
+        except Exception as e:
+            print(f"更新默认值失败: {e}")
+
     def load_history(self):
         """加载历史记录"""
         records = self.history_manager.get_records()
@@ -611,51 +654,6 @@ class SingleGenTab(QWidget):
         """生成新的随机种子"""
         self.seed_input.setText(str(random.randint(1, 9999999998)))  # 1 到 9999999998
 
-    def update_defaults(self):
-        """更新默认参数设置"""
-        defaults = self.config.get("defaults", {})
-        
-        # 更新模型
-        default_model = defaults.get("model", "stabilityai/stable-diffusion-3-5-large")
-        index = self.model_combo.findText(default_model)
-        if index >= 0:
-            self.model_combo.setCurrentIndex(index)
-        
-        # 更新尺寸
-        default_size = defaults.get("size", "1024x1024")
-        index = self.size_combo.findText(default_size)
-        if index >= 0:
-            self.size_combo.setCurrentIndex(index)
-        
-        # 更新其他参数
-        self.batch_spin.setValue(defaults.get("batch_size", 1))
-        self.steps_spin.setValue(defaults.get("steps", 20))
-        self.guidance_spin.setValue(defaults.get("guidance", 7.5))
-        
-        # 更新负面提示词
-        negative_prompt = defaults.get("negative_prompt", "")
-        self.negative_input.setPlainText(negative_prompt)
-        
-        # 更新种子值设置
-        use_random = defaults.get("use_random_seed", False)
-        self.random_seed_check.setChecked(use_random)
-        
-        if use_random:
-            self.seed_input.clear()
-        else:
-            seed = defaults.get("seed")
-            if seed is not None:
-                self.seed_input.setText(str(seed))
-            else:
-                self.seed_input.clear()
-
-    def on_random_seed_changed(self, state):
-        """处理随机种子复选框状态变化"""
-        is_checked = state == Qt.CheckState.Checked.value
-        self.seed_input.setEnabled(not is_checked)
-        if is_checked:
-            self.seed_input.clear()
-
     def validate_seed_input(self, text):
         """验证种子值输入"""
         if not text:  # 允许空值
@@ -708,5 +706,12 @@ class SingleGenTab(QWidget):
                 params["seed"] = random.randint(1, 9999999998)  # 1 到 9999999998
         
         return params
+
+    def on_random_seed_changed(self, state):
+        """处理随机种子复选框状态变化"""
+        is_checked = state == Qt.CheckState.Checked.value
+        self.seed_input.setEnabled(not is_checked)
+        if is_checked:
+            self.seed_input.clear()
 
 # ... existing code ... 
