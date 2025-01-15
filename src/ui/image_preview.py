@@ -1,6 +1,7 @@
 from PyQt6.QtWidgets import QLabel, QRubberBand, QWidget, QVBoxLayout, QHBoxLayout, QPushButton
 from PyQt6.QtCore import Qt, QPoint, QRect, QSize, QPointF
 from PyQt6.QtGui import QPixmap, QPainter, QWheelEvent, QMouseEvent, QPaintEvent, QResizeEvent
+from PyQt6.QtCore import pyqtSignal
 
 class ImagePreviewWidget(QWidget):
     """图片预览组件，支持缩放、拖动等功能"""
@@ -13,7 +14,7 @@ class ImagePreviewWidget(QWidget):
         layout = QVBoxLayout()
         
         # 创建图片显示标签
-        self.image_label = QLabel()
+        self.image_label = ImageLabel(self)
         self.image_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.image_label.setStyleSheet("border: 1px solid #cccccc;")
         layout.addWidget(self.image_label)
@@ -54,6 +55,11 @@ class ImagePreviewWidget(QWidget):
         self.image_label.setMouseTracking(True)
         self.image_label.setFocusPolicy(Qt.FocusPolicy.WheelFocus)
         
+        # 连接图片标签的信号
+        self.image_label.mouse_pressed.connect(self._on_mouse_press)
+        self.image_label.mouse_released.connect(self._on_mouse_release)
+        self.image_label.mouse_moved.connect(self._on_mouse_move)
+        
     def load_images(self, image_paths: list) -> None:
         """加载多张图片"""
         self._pixmaps = []
@@ -63,15 +69,15 @@ class ImagePreviewWidget(QWidget):
                 self._pixmaps.append(pixmap)
         
         self._current_index = 0
-        self._scale = 1.0
         self._scroll_offset = QPoint()
         
         # 更新导航按钮状态
         self._update_navigation()
         
         if self._pixmaps:
+            # 先设置合适的缩放比例
+            self.fit_to_view()
             self._update_scaled_pixmap()
-            self.fit_to_view()  # 自动适应窗口大小
             self.update()
     
     def _update_navigation(self) -> None:
@@ -142,8 +148,8 @@ class ImagePreviewWidget(QWidget):
             
         # 计算新的缩放比例
         delta = event.angleDelta().y()
-        scale_delta = 0.1 if delta > 0 else -0.1
-        new_scale = max(self._min_scale, min(self._max_scale, self._scale + scale_delta))
+        scale_factor = 1.1 if delta > 0 else 0.9
+        new_scale = max(self._min_scale, min(self._max_scale, self._scale * scale_factor))
         
         if new_scale != self._scale:
             # 保存鼠标位置相对于图片中心的偏移
@@ -152,32 +158,33 @@ class ImagePreviewWidget(QWidget):
             old_offset = old_pos - old_center - self._scroll_offset
             
             # 更新缩放
+            scale_ratio = new_scale / self._scale
             self._scale = new_scale
             self._update_scaled_pixmap()
             
             # 计算新的偏移以保持鼠标位置不变
             new_offset = QPoint(
-                int(old_offset.x() * (new_scale / (new_scale - scale_delta))),
-                int(old_offset.y() * (new_scale / (new_scale - scale_delta)))
+                int(old_offset.x() * scale_ratio),
+                int(old_offset.y() * scale_ratio)
             )
             self._scroll_offset = old_pos - old_center - new_offset
             
             self.update()
             
-    def mousePressEvent(self, event: QMouseEvent) -> None:
+    def _on_mouse_press(self, event: QMouseEvent) -> None:
         """处理鼠标按下事件"""
         if event.button() == Qt.MouseButton.LeftButton:
             self._dragging = True
             self._drag_start = event.pos()
             self.image_label.setCursor(Qt.CursorShape.ClosedHandCursor)
             
-    def mouseReleaseEvent(self, event: QMouseEvent) -> None:
+    def _on_mouse_release(self, event: QMouseEvent) -> None:
         """处理鼠标释放事件"""
         if event.button() == Qt.MouseButton.LeftButton:
             self._dragging = False
             self.image_label.setCursor(Qt.CursorShape.ArrowCursor)
             
-    def mouseMoveEvent(self, event: QMouseEvent) -> None:
+    def _on_mouse_move(self, event: QMouseEvent) -> None:
         """处理鼠标移动事件"""
         if self._dragging and self._scaled_pixmap:
             # 计算拖动偏移
@@ -223,15 +230,42 @@ class ImagePreviewWidget(QWidget):
         
         # 考虑边距
         margin = 20
-        available_width = view_size.width() - 2 * margin
-        available_height = view_size.height() - 2 * margin
+        available_width = max(1, view_size.width() - 2 * margin)  # 确保不为0
+        available_height = max(1, view_size.height() - 2 * margin)  # 确保不为0
         
         # 计算缩放比例，保持宽高比
         scale_x = available_width / pixmap_size.width()
         scale_y = available_height / pixmap_size.height()
         
-        # 使用较小的缩放比例以确保完整显示
-        self._scale = min(scale_x, scale_y)
+        # 使用较小的缩放比例以确保完整显示，并确保在允许的范围内
+        self._scale = max(self._min_scale, min(self._max_scale, min(scale_x, scale_y)))
         self._scroll_offset = QPoint()
         self._update_scaled_pixmap()
-        self.update() 
+        self.update()
+
+class ImageLabel(QLabel):
+    """自定义图片标签，用于处理鼠标事件"""
+    
+    # 定义信号
+    mouse_pressed = pyqtSignal(QMouseEvent)
+    mouse_released = pyqtSignal(QMouseEvent)
+    mouse_moved = pyqtSignal(QMouseEvent)
+    
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setMouseTracking(True)
+    
+    def mousePressEvent(self, event: QMouseEvent) -> None:
+        """处理鼠标按下事件"""
+        self.mouse_pressed.emit(event)
+        super().mousePressEvent(event)
+    
+    def mouseReleaseEvent(self, event: QMouseEvent) -> None:
+        """处理鼠标释放事件"""
+        self.mouse_released.emit(event)
+        super().mouseReleaseEvent(event)
+    
+    def mouseMoveEvent(self, event: QMouseEvent) -> None:
+        """处理鼠标移动事件"""
+        self.mouse_moved.emit(event)
+        super().mouseMoveEvent(event) 

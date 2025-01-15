@@ -1,0 +1,144 @@
+2025-01-15 15:06:05,107 - INFO - === 开始测试 ===
+2025-01-15 15:06:05,108 - INFO - 开始清理测试文件
+2025-01-15 15:06:05,109 - INFO - 删除目录: D:\AI project\Image-generation\config
+2025-01-15 15:06:05,123 - INFO - 删除目录: D:\AI project\Image-generation\output
+2025-01-15 15:06:05,143 - INFO - 删除目录: D:\AI project\Image-generation\presets
+2025-01-15 15:06:05,155 - INFO - 删除目录: D:\AI project\Image-generation\history
+2025-01-15 15:06:05,168 - INFO - 测试目录权限
+2025-01-15 15:06:05,170 - INFO - 目录权限正常: D:\AI project\Image-generation\config
+2025-01-15 15:06:05,173 - INFO - 目录权限正常: D:\AI project\Image-generation\output
+2025-01-15 15:06:05,175 - INFO - 目录权限正常: D:\AI project\Image-generation\presets
+2025-01-15 15:06:05,177 - INFO - 目录权限正常: D:\AI project\Image-generation\history
+2025-01-15 15:06:05,178 - INFO - 开始模拟打包环境
+2025-01-15 15:06:05,178 - INFO - 设置可执行文件路径为: D:\AI project\Image-generation
+2025-01-15 15:06:05,178 - INFO - 创建配置管理器
+2025-01-15 15:06:05,180 - INFO - 成功创建并验证目录: D:\AI project\Image-generation\venv\Scripts\config
+2025-01-15 15:06:05,183 - INFO - 成功创建并验证目录: D:\AI project\Image-generation\venv\Scripts\output
+2025-01-15 15:06:05,185 - INFO - 成功创建并验证目录: D:\AI project\Image-generation\venv\Scripts\presets
+2025-01-15 15:06:05,188 - INFO - 成功创建并验证目录: D:\AI project\Image-generation\venv\Scripts\history
+2025-01-15 15:06:05,190 - INFO - 成功保存配置文件
+2025-01-15 15:06:05,191 - INFO - 已创建新的配置文件
+2025-01-15 15:06:05,191 - INFO - === 配置管理器信息 ===
+2025-01-15 15:06:05,191 - INFO - 项目根目录: D:\AI project\Image-generation\venv\Scripts
+2025-01-15 15:06:05,192 - INFO - 配置目录: D:\AI project\Image-generation\venv\Scripts\config
+2025-01-15 15:06:05,192 - INFO - 配置文件: D:\AI project\Image-generation\venv\Scripts\config\config.json
+2025-01-15 15:06:05,192 - INFO - 测试保存配置
+2025-01-15 15:06:05,194 - INFO - 成功保存配置文件
+2025-01-15 15:06:05,195 - INFO - 配置保存成功
+2025-01-15 15:06:05,195 - INFO - === 验证目录创建 ===
+2025-01-15 15:06:05,195 - INFO - 目录已创建: D:\AI project\Image-generation\venv\Scripts\config
+2025-01-15 15:06:05,197 - INFO - 目录可写: D:\AI project\Image-generation\venv\Scripts\config
+2025-01-15 15:06:05,197 - INFO - 目录已创建: D:\AI project\Image-generation\venv\Scripts\output
+2025-01-15 15:06:05,198 - INFO - 目录可写: D:\AI project\Image-generation\venv\Scripts\output
+2025-01-15 15:06:05,199 - INFO - 目录已创建: D:\AI project\Image-generation\venv\Scripts\presets
+2025-01-15 15:06:05,201 - INFO - 目录可写: D:\AI project\Image-generation\venv\Scripts\presets
+2025-01-15 15:06:05,201 - INFO - 目录已创建: D:\AI project\Image-generation\venv\Scripts\history
+2025-01-15 15:06:05,203 - INFO - 目录可写: D:\AI project\Image-generation\venv\Scripts\history
+2025-01-15 15:06:05,204 - INFO - === 测试配置加载 ===
+2025-01-15 15:06:05,206 - INFO - 成功创建并验证目录: D:\AI project\Image-generation\venv\Scripts\config
+2025-01-15 15:06:05,208 - INFO - 成功创建并验证目录: D:\AI project\Image-generation\venv\Scripts\output
+2025-01-15 15:06:05,210 - INFO - 成功创建并验证目录: D:\AI project\Image-generation\venv\Scripts\presets
+2025-01-15 15:06:05,211 - INFO - 成功创建并验证目录: D:\AI project\Image-generation\venv\Scripts\history
+2025-01-15 15:06:05,212 - INFO - 成功加载配置文件
+2025-01-15 15:06:05,212 - INFO - 加载的API密钥: test_key_789
+2025-01-15 15:06:05,213 - INFO - 配置加载成功
+2025-01-15 15:06:05,213 - INFO - === 测试完成 ===
+2025-01-15 15:06:05,213 - INFO - 
+测试成功
+2025-01-15 15:06:52,425 - INFO - === 开始测试 ===
+2025-01-15 15:06:52,425 - INFO - 开始清理测试文件
+2025-01-15 15:06:52,426 - INFO - 删除目录: D:\AI project\Image-generation\config
+2025-01-15 15:06:52,441 - INFO - 删除目录: D:\AI project\Image-generation\output
+2025-01-15 15:06:52,454 - INFO - 删除目录: D:\AI project\Image-generation\presets
+2025-01-15 15:06:52,470 - INFO - 删除目录: D:\AI project\Image-generation\history
+2025-01-15 15:06:52,484 - INFO - 测试目录权限
+2025-01-15 15:06:52,486 - INFO - 目录权限正常: D:\AI project\Image-generation\config
+2025-01-15 15:06:52,490 - INFO - 目录权限正常: D:\AI project\Image-generation\output
+2025-01-15 15:06:52,494 - INFO - 目录权限正常: D:\AI project\Image-generation\presets
+2025-01-15 15:06:52,497 - INFO - 目录权限正常: D:\AI project\Image-generation\history
+2025-01-15 15:06:52,497 - INFO - 开始模拟打包环境
+2025-01-15 15:06:52,498 - INFO - 设置可执行文件路径为: D:\AI project\Image-generation
+2025-01-15 15:06:52,498 - INFO - 创建配置管理器
+2025-01-15 15:06:52,498 - INFO - 使用打包模式，程序根目录: D:\AI project\Image-generation\venv\Scripts
+2025-01-15 15:06:52,500 - INFO - 成功创建并验证目录: D:\AI project\Image-generation\venv\Scripts\config
+2025-01-15 15:06:52,502 - INFO - 成功创建并验证目录: D:\AI project\Image-generation\venv\Scripts\output
+2025-01-15 15:06:52,504 - INFO - 成功创建并验证目录: D:\AI project\Image-generation\venv\Scripts\presets
+2025-01-15 15:06:52,506 - INFO - 成功创建并验证目录: D:\AI project\Image-generation\venv\Scripts\history
+2025-01-15 15:06:52,507 - INFO - 成功加载配置文件
+2025-01-15 15:06:52,508 - INFO - === 配置管理器信息 ===
+2025-01-15 15:06:52,508 - INFO - 项目根目录: D:\AI project\Image-generation\venv\Scripts
+2025-01-15 15:06:52,508 - INFO - 配置目录: D:\AI project\Image-generation\venv\Scripts\config
+2025-01-15 15:06:52,508 - INFO - 配置文件: D:\AI project\Image-generation\venv\Scripts\config\config.json
+2025-01-15 15:06:52,509 - INFO - 测试保存配置
+2025-01-15 15:06:52,511 - INFO - 成功保存配置文件
+2025-01-15 15:06:52,511 - INFO - 配置保存成功
+2025-01-15 15:06:52,511 - INFO - === 验证目录创建 ===
+2025-01-15 15:06:52,512 - INFO - 目录已创建: D:\AI project\Image-generation\venv\Scripts\config
+2025-01-15 15:06:52,513 - INFO - 目录可写: D:\AI project\Image-generation\venv\Scripts\config
+2025-01-15 15:06:52,513 - INFO - 目录已创建: D:\AI project\Image-generation\venv\Scripts\output
+2025-01-15 15:06:52,514 - INFO - 目录可写: D:\AI project\Image-generation\venv\Scripts\output
+2025-01-15 15:06:52,515 - INFO - 目录已创建: D:\AI project\Image-generation\venv\Scripts\presets
+2025-01-15 15:06:52,516 - INFO - 目录可写: D:\AI project\Image-generation\venv\Scripts\presets
+2025-01-15 15:06:52,516 - INFO - 目录已创建: D:\AI project\Image-generation\venv\Scripts\history
+2025-01-15 15:06:52,518 - INFO - 目录可写: D:\AI project\Image-generation\venv\Scripts\history
+2025-01-15 15:06:52,518 - INFO - === 测试配置加载 ===
+2025-01-15 15:06:52,518 - INFO - 使用打包模式，程序根目录: D:\AI project\Image-generation\venv\Scripts
+2025-01-15 15:06:52,521 - INFO - 成功创建并验证目录: D:\AI project\Image-generation\venv\Scripts\config
+2025-01-15 15:06:52,523 - INFO - 成功创建并验证目录: D:\AI project\Image-generation\venv\Scripts\output
+2025-01-15 15:06:52,525 - INFO - 成功创建并验证目录: D:\AI project\Image-generation\venv\Scripts\presets
+2025-01-15 15:06:52,527 - INFO - 成功创建并验证目录: D:\AI project\Image-generation\venv\Scripts\history
+2025-01-15 15:06:52,528 - INFO - 成功加载配置文件
+2025-01-15 15:06:52,528 - INFO - 加载的API密钥: test_key_789
+2025-01-15 15:06:52,528 - INFO - 配置加载成功
+2025-01-15 15:06:52,529 - INFO - === 测试完成 ===
+2025-01-15 15:06:52,529 - INFO - 
+测试成功
+2025-01-15 15:07:31,451 - INFO - === 开始测试 ===
+2025-01-15 15:07:31,451 - INFO - 开始清理测试文件
+2025-01-15 15:07:31,452 - INFO - 删除目录: D:\AI project\Image-generation\config
+2025-01-15 15:07:31,466 - INFO - 删除目录: D:\AI project\Image-generation\output
+2025-01-15 15:07:31,480 - INFO - 删除目录: D:\AI project\Image-generation\presets
+2025-01-15 15:07:31,495 - INFO - 删除目录: D:\AI project\Image-generation\history
+2025-01-15 15:07:31,511 - INFO - 测试目录权限
+2025-01-15 15:07:31,514 - INFO - 目录权限正常: D:\AI project\Image-generation\config
+2025-01-15 15:07:31,516 - INFO - 目录权限正常: D:\AI project\Image-generation\output
+2025-01-15 15:07:31,518 - INFO - 目录权限正常: D:\AI project\Image-generation\presets
+2025-01-15 15:07:31,520 - INFO - 目录权限正常: D:\AI project\Image-generation\history
+2025-01-15 15:07:31,520 - INFO - 开始模拟打包环境
+2025-01-15 15:07:31,521 - INFO - 设置可执行文件路径为: D:\AI project\Image-generation\Silicon Flow.exe
+2025-01-15 15:07:31,521 - INFO - 创建配置管理器
+2025-01-15 15:07:31,522 - INFO - 使用打包模式，程序根目录: D:\AI project\Image-generation
+2025-01-15 15:07:31,524 - INFO - 成功创建并验证目录: D:\AI project\Image-generation\config
+2025-01-15 15:07:31,527 - INFO - 成功创建并验证目录: D:\AI project\Image-generation\output
+2025-01-15 15:07:31,528 - INFO - 成功创建并验证目录: D:\AI project\Image-generation\presets
+2025-01-15 15:07:31,530 - INFO - 成功创建并验证目录: D:\AI project\Image-generation\history
+2025-01-15 15:07:31,533 - INFO - 成功保存配置文件
+2025-01-15 15:07:31,534 - INFO - 已创建新的配置文件
+2025-01-15 15:07:31,534 - INFO - === 配置管理器信息 ===
+2025-01-15 15:07:31,534 - INFO - 项目根目录: D:\AI project\Image-generation
+2025-01-15 15:07:31,534 - INFO - 配置目录: D:\AI project\Image-generation\config
+2025-01-15 15:07:31,535 - INFO - 配置文件: D:\AI project\Image-generation\config\config.json
+2025-01-15 15:07:31,535 - INFO - 测试保存配置
+2025-01-15 15:07:31,537 - INFO - 成功保存配置文件
+2025-01-15 15:07:31,537 - INFO - 配置保存成功
+2025-01-15 15:07:31,537 - INFO - === 验证目录创建 ===
+2025-01-15 15:07:31,538 - INFO - 目录已创建: D:\AI project\Image-generation\config
+2025-01-15 15:07:31,539 - INFO - 目录可写: D:\AI project\Image-generation\config
+2025-01-15 15:07:31,540 - INFO - 目录已创建: D:\AI project\Image-generation\output
+2025-01-15 15:07:31,542 - INFO - 目录可写: D:\AI project\Image-generation\output
+2025-01-15 15:07:31,543 - INFO - 目录已创建: D:\AI project\Image-generation\presets
+2025-01-15 15:07:31,545 - INFO - 目录可写: D:\AI project\Image-generation\presets
+2025-01-15 15:07:31,546 - INFO - 目录已创建: D:\AI project\Image-generation\history
+2025-01-15 15:07:31,547 - INFO - 目录可写: D:\AI project\Image-generation\history
+2025-01-15 15:07:31,548 - INFO - === 测试配置加载 ===
+2025-01-15 15:07:31,548 - INFO - 使用打包模式，程序根目录: D:\AI project\Image-generation
+2025-01-15 15:07:31,550 - INFO - 成功创建并验证目录: D:\AI project\Image-generation\config
+2025-01-15 15:07:31,552 - INFO - 成功创建并验证目录: D:\AI project\Image-generation\output
+2025-01-15 15:07:31,554 - INFO - 成功创建并验证目录: D:\AI project\Image-generation\presets
+2025-01-15 15:07:31,556 - INFO - 成功创建并验证目录: D:\AI project\Image-generation\history
+2025-01-15 15:07:31,557 - INFO - 成功加载配置文件
+2025-01-15 15:07:31,558 - INFO - 加载的API密钥: test_key_789
+2025-01-15 15:07:31,558 - INFO - 配置加载成功
+2025-01-15 15:07:31,558 - INFO - === 测试完成 ===
+2025-01-15 15:07:31,559 - INFO - 
+测试成功

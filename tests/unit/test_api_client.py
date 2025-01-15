@@ -12,8 +12,12 @@ def api_client():
 @pytest.fixture
 def mock_api_response():
     return {
-        "images": [{"url": "http://example.com/image.png"}],
-        "seed": 123,
+        "data": [
+            {
+                "url": "http://example.com/image.png",
+                "seed": 42
+            }
+        ],
         "timings": {"inference": 1.5}
     }
 
@@ -41,9 +45,9 @@ def test_generate_image_with_all_params(api_client, mock_api_response):
         prompt="test prompt",
         model="stabilityai/stable-diffusion-3-5-large",
         negative_prompt="bad quality",
-        image_size="1024x1024",
+        size="1024x1024",
         batch_size=1,
-        seed=42,
+        seeds=[42],
         num_inference_steps=20,
         guidance_scale=7.5,
         prompt_enhancement=True
@@ -53,11 +57,10 @@ def test_generate_image_with_all_params(api_client, mock_api_response):
     assert len(responses.calls) == 1
     assert responses.calls[0].request.url == f"{api_client.base_url}/images/generations"
     
-    # 修改这里：使用 responses.calls[0].request.body 获取请求体
     request_body = json.loads(responses.calls[0].request.body.decode('utf-8'))
     assert request_body["prompt"] == "test prompt"
     assert request_body["model"] == "stabilityai/stable-diffusion-3-5-large"
-    assert request_body["seed"] == 42
+    assert request_body["seeds"] == [42]
 
 @responses.activate
 def test_api_rate_limit_error(api_client):
@@ -69,9 +72,12 @@ def test_api_rate_limit_error(api_client):
     )
     
     with pytest.raises(APIError) as exc_info:
-        api_client.generate_image("test prompt")
+        api_client.generate_image(
+            prompt="test prompt",
+            model="stabilityai/stable-diffusion-3-5-large"
+        )
     assert exc_info.value.code == 429
-    assert "超出请求限制" in str(exc_info.value)
+    assert "API请求超出限制" in str(exc_info.value)
 
 @responses.activate
 def test_api_server_error(api_client):
@@ -83,17 +89,20 @@ def test_api_server_error(api_client):
     )
     
     with pytest.raises(APIError) as exc_info:
-        api_client.generate_image("test prompt")
+        api_client.generate_image(
+            prompt="test prompt",
+            model="stabilityai/stable-diffusion-3-5-large"
+        )
     assert exc_info.value.code == 503
-    assert "服务暂时不可用" in str(exc_info.value)
+    assert "API服务暂时不可用" in str(exc_info.value)
 
 @responses.activate
-def test_validate_api_key(api_client, mock_api_response):
+def test_validate_api_key(api_client):
     # 测试有效的API密钥
     responses.add(
-        responses.POST,
-        "https://api.siliconflow.cn/v1/images/generations",
-        json=mock_api_response,
+        responses.GET,
+        "https://api.siliconflow.cn/v1/models",
+        json={"models": ["model1", "model2"]},
         status=200
     )
     assert api_client.validate_api_key() is True
@@ -101,8 +110,8 @@ def test_validate_api_key(api_client, mock_api_response):
     # 测试无效的API密钥
     responses.reset()
     responses.add(
-        responses.POST,
-        "https://api.siliconflow.cn/v1/images/generations",
+        responses.GET,
+        "https://api.siliconflow.cn/v1/models",
         json={"error": "Invalid API key"},
         status=401
     )

@@ -307,6 +307,108 @@ project/
       self.negative_prompt.setStyleSheet("QTextEdit { padding: 5px; }")
   ```
 
+#### 7.1.5 历史记录管理界面
+- 主要类：`HistoryWindow` 和 `DraggableTableWidget`
+- 核心功能：
+  * 自定义拖放排序
+  * 双击打开图片
+  * 右键菜单操作
+  * Excel导出增强
+  * 批量删除优化
+- 实现细节：
+  ```python
+  class DraggableTableWidget(QTableWidget):
+      """支持拖放的表格控件"""
+      def __init__(self):
+          super().__init__()
+          self.setAcceptDrops(False)  # 禁用Qt的拖放
+          self.setDragEnabled(False)
+          self.dragging = False
+          self.drag_start_pos = None
+          self.drag_source_row = -1
+          self.drop_indicator_row = -1
+          
+      def mousePressEvent(self, event):
+          """处理鼠标按下事件，开始拖动"""
+          if event.button() == Qt.MouseButton.LeftButton:
+              row = self.rowAt(event.pos().y())
+              if row >= 0:
+                  self.drag_start_pos = event.pos()
+                  self.drag_source_row = row
+                  
+      def mouseMoveEvent(self, event):
+          """处理鼠标移动事件，显示拖动预览"""
+          if self.dragging:
+              # 计算目标行
+              pos = event.pos()
+              row = self.rowAt(pos.y())
+              
+              # 更新拖放指示器
+              if row != self.drop_indicator_row:
+                  self.drop_indicator_row = row
+                  self.viewport().update()
+                  
+      def mouseReleaseEvent(self, event):
+          """处理鼠标释放事件，完成拖放操作"""
+          if self.dragging:
+              # 移动记录
+              record = self.history_manager.records.pop(self.drag_source_row)
+              self.history_manager.records.insert(self.drop_indicator_row, record)
+              self.history_manager.save_records()
+              
+              # 更新界面
+              self.history_window.refresh_table()
+  ```
+
+- Excel导出增强：
+  ```python
+  def export_to_excel(self):
+      """导出选中记录为Excel（包含原图）"""
+      # 计算合适的显示大小
+      max_width = 120  # 20个字符宽度 * 6像素
+      max_height = 100  # 约67个单位高度
+      
+      # 计算缩放比例
+      width_scale = max_width / img.width if img.width > max_width else 1
+      height_scale = max_height / img.height if img.height > max_height else 1
+      scale = min(width_scale, height_scale)
+      
+      # 设置行高
+      row_height = img.height * 0.75  # 将像素转换为Excel单位
+      row_height = max(row_height, 20)  # 确保最小行高
+      ws.row_dimensions[row_idx].height = row_height
+  ```
+
+- 右键菜单功能：
+  ```python
+  def show_context_menu(self, pos):
+      """显示右键菜单"""
+      menu = QMenu(self)
+      
+      # 获取图片路径
+      record = self.history_manager.records[row]
+      image_paths = record.get("image_paths", [])
+      
+      # 添加菜单项
+      open_folder_action = menu.addAction("打开图片所在文件夹")
+      
+      # 处理菜单动作
+      if action == open_folder_action:
+          abs_path = os.path.abspath(image_paths[0])
+          os.system(f'explorer /select,"{abs_path}"')
+  ```
+
+- 双击打开功能：
+  ```python
+  def handle_double_click(self, row, column):
+      """处理双击事件，打开图片"""
+      record = self.history_manager.records[row]
+      image_paths = record.get("image_paths", [])
+      
+      if image_paths and os.path.exists(image_paths[0]):
+          os.startfile(image_paths[0])
+  ```
+
 ### 7.2 批量生成功能
 
 #### 7.2.1 基本架构

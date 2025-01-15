@@ -410,69 +410,152 @@ def test_clear_seed():
 
 ## 历史记录管理界面测试
 
-### 拖放排序功能测试
+### 8. 历史管理界面测试
 
-#### 基本功能测试
+#### 8.1 拖放排序功能测试
 
-1. 拖放操作
-   - [ ] 点击并按住任意行，确认可以开始拖动
-   - [ ] 拖动时观察是否有清晰的视觉指示器
-   - [ ] 释放鼠标后，记录应移动到目标位置
+##### 8.1.1 基本拖放功能
+- 测试项：
+  * 拖动开始和结束
+  * 位置计算
+  * 视觉反馈
+  * 记录更新
+- 测试用例：
+  ```python
+  def test_drag_drop_functionality():
+      # 初始化
+      window = HistoryWindow(mock_history)
+      
+      # 模拟拖动
+      event = QMouseEvent(
+          QEvent.Type.MouseButtonPress,
+          QPoint(0, 0),
+          Qt.MouseButton.LeftButton,
+          Qt.MouseButton.LeftButton,
+          Qt.KeyboardModifier.NoModifier
+      )
+      window.table.mousePressEvent(event)
+      
+      # 验证拖动状态
+      assert window.table.dragging == True
+      assert window.table.drag_source_row >= 0
+  ```
 
-2. 内容完整性
-   - [ ] 拖放后检查所有列的内容是否完整保留
-   - [ ] 确认缩略图正确显示
-   - [ ] 验证复选框状态是否保持
+##### 8.1.2 拖放位置测试
+- 测试项：
+  * 边界条件处理
+  * 位置指示器
+  * 记录顺序更新
+- 测试用例：
+  ```python
+  def test_drop_position():
+      # 初始化
+      window = HistoryWindow(mock_history)
+      
+      # 测试边界位置
+      window.table.drop_indicator_row = 0
+      assert window.table.drop_indicator_row == 0
+      
+      window.table.drop_indicator_row = window.table.rowCount()
+      assert window.table.drop_indicator_row == window.table.rowCount()
+  ```
 
-3. 视觉反馈
-   - [ ] 拖动时是否显示水平线指示器
-   - [ ] 指示器两端是否有三角形标记
-   - [ ] 拖动时行的背景是否有高亮效果
+#### 8.2 删除功能测试
 
-#### 边界条件测试
+##### 8.2.1 单条记录删除
+- 测试项：
+  * 选择记录
+  * 确认对话框
+  * 记录删除
+  * 文件删除
+- 测试用例：
+  ```python
+  def test_delete_single_record():
+      # 初始化
+      window = HistoryWindow(mock_history)
+      
+      # 选择记录
+      window.table.selectRow(0)
+      
+      # 执行删除
+      window.delete_selected(delete_files=False)
+      
+      # 验证结果
+      assert len(window.history_manager.records) == initial_count - 1
+  ```
 
-1. 特殊位置
-   - [ ] 拖动到第一行
-   - [ ] 拖动到最后一行
-   - [ ] 拖动到当前位置（应该不发生变化）
+##### 8.2.2 批量删除测试
+- 测试项：
+  * 多选记录
+  * 批量删除
+  * 文件处理
+  * 错误处理
+- 测试用例：
+  ```python
+  def test_delete_multiple_records():
+      # 初始化
+      window = HistoryWindow(mock_history)
+      
+      # 选择多条记录
+      for i in range(3):
+          item = window.table.item(i, 0)
+          item.setCheckState(Qt.CheckState.Checked)
+      
+      # 执行删除
+      window.delete_selected(delete_files=True)
+      
+      # 验证结果
+      assert len(window.history_manager.records) == initial_count - 3
+  ```
 
-2. 多行操作
-   - [ ] 拖动时表格中有多行数据
-   - [ ] 表格滚动时的拖放操作
-   - [ ] 快速连续拖放操作
+#### 8.3 Excel导出测试
 
-#### 数据同步测试
+##### 8.3.1 基本导出功能
+- 测试项：
+  * 文件保存
+  * 数据完整性
+  * 图片嵌入
+  * 格式设置
+- 测试用例：
+  ```python
+  def test_excel_export():
+      # 初始化
+      window = HistoryWindow(mock_history)
+      
+      # 选择记录
+      window.table.selectRow(0)
+      
+      # 执行导出
+      window.export_to_excel()
+      
+      # 验证结果
+      assert os.path.exists("test_export.xlsx")
+      # 验证Excel内容
+  ```
 
-1. 历史记录
-   - [ ] 拖放后检查历史记录文件是否正确更新
-   - [ ] 关闭并重新打开界面，确认顺序保持不变
+##### 8.3.2 图片处理测试
+- 测试项：
+  * 图片缩放
+  * 单元格适应
+  * 行高调整
+  * 格式保持
+- 测试用例：
+  ```python
+  def test_excel_image_handling():
+      # 初始化
+      window = HistoryWindow(mock_history)
+      
+      # 准备测试图片
+      test_image = Image.new('RGB', (1024, 1024))
+      test_image.save("test.png")
+      
+      # 执行导出
+      window.export_to_excel()
+      
+      # 验证图片处理
+      # 检查图片尺寸和位置
+  ```
 
-2. 界面同步
-   - [ ] 拖放后其他标签页中的历史记录是否同步更新
-   - [ ] 验证历史记录更新信号是否正确触发
-
-#### 异常处理测试
-
-1. 错误情况
-   - [ ] 拖放过程中关闭窗口
-   - [ ] 拖放时文件被外部修改
-   - [ ] 拖放到无效位置
-
-2. 恢复机制
-   - [ ] 拖放失败时是否恢复原始状态
-   - [ ] 错误发生时是否有适当的提示
-
-#### 性能测试
-
-1. 响应性
-   - [ ] 拖动大量记录时的性能
-   - [ ] 包含多个缩略图时的性能
-   - [ ] 快速拖放操作的响应速度
-
-2. 内存使用
-   - [ ] 长时间拖放操作的内存占用
-   - [ ] 大量图片时的内存管理
- 
 # 测试文档
 
 ## 种子值输入测试

@@ -1,14 +1,27 @@
 import json
 import os
+import sys
+import logging
 from typing import Dict, Any
 from pathlib import Path
 
 class ConfigManager:
     def __init__(self):
-        # 获取项目根目录
-        self.project_root = Path(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
+        # 设置日志
+        logging.basicConfig(level=logging.INFO)
+        self.logger = logging.getLogger(__name__)
         
-        # 配置文件路径（在项目目录下）
+        # 获取程序运行目录
+        if getattr(sys, 'frozen', False):
+            # 如果是打包后的 exe
+            self.project_root = Path(os.path.dirname(sys.executable))
+            self.logger.info(f"使用打包模式，程序根目录: {self.project_root}")
+        else:
+            # 如果是源码运行，使用当前工作目录
+            self.project_root = Path.cwd()
+            self.logger.info(f"使用开发模式，程序根目录: {self.project_root}")
+        
+        # 配置文件路径（在程序运行目录下）
         self.config_dir = self.project_root / 'config'
         self.config_file = self.config_dir / 'config.json'
         
@@ -51,66 +64,100 @@ class ConfigManager:
         }
         
         # 确保所有必要的目录存在
-        self._ensure_directories()
+        if not self._ensure_directories():
+            raise RuntimeError("无法创建必要的目录，请检查程序权限")
         
         # 加载配置
         self.config = self.load_config()
         
-    def _ensure_directories(self):
+    def _ensure_directories(self) -> bool:
         """确保所有必要的目录存在"""
+        directories = [
+            self.config_dir,
+            Path(self.defaults["paths"]["output_dir"]),
+            Path(self.defaults["paths"]["presets_dir"]),
+            Path(self.defaults["paths"]["history_file"]).parent
+        ]
+        
         try:
-            # 创建配置目录
-            self.config_dir.mkdir(parents=True, exist_ok=True)
-            
-            # 创建输出目录
-            output_dir = Path(self.defaults["paths"]["output_dir"])
-            output_dir.mkdir(parents=True, exist_ok=True)
-            
-            # 创建预设目录
-            presets_dir = Path(self.defaults["paths"]["presets_dir"])
-            presets_dir.mkdir(parents=True, exist_ok=True)
-            
-            # 创建历史记录目录
-            history_dir = Path(self.defaults["paths"]["history_file"]).parent
-            history_dir.mkdir(parents=True, exist_ok=True)
+            for directory in directories:
+                try:
+                    # 尝试创建目录
+                    os.makedirs(directory, exist_ok=True)
+                    
+                    # 测试目录是否可写
+                    test_file = directory / ".write_test"
+                    test_file.touch()
+                    test_file.unlink()
+                    
+                    self.logger.info(f"成功创建并验证目录: {directory}")
+                except Exception as e:
+                    self.logger.error(f"创建或验证目录失败: {directory}, 错误: {e}")
+                    return False
+            return True
             
         except Exception as e:
-            print(f"创建目录时出错: {e}")
+            self.logger.error(f"创建目录时发生错误: {e}")
+            return False
         
     def load_config(self) -> Dict[str, Any]:
         """加载配置文件"""
         try:
-            # 确保配置目录存在
-            self.config_dir.mkdir(parents=True, exist_ok=True)
+            if os.path.exists(self.config_file):
+                try:
+                    with open(self.config_file, 'r', encoding='utf-8') as f:
+                        config = json.load(f)
+                    # 合并默认配置，确保新添加的配置项存在
+                    merged_config = self._merge_configs(self.defaults, config)
+                    self.logger.info("成功加载配置文件")
+                    return merged_config
+                except json.JSONDecodeError as e:
+                    self.logger.error(f"配置文件格式错误: {e}")
+                    # 备份损坏的配置文件
+                    backup_file = self.config_file.with_suffix('.json.bak')
+                    os.rename(self.config_file, backup_file)
+                    self.logger.info(f"已备份损坏的配置文件到: {backup_file}")
             
-            if self.config_file.exists():
-                with open(self.config_file, 'r', encoding='utf-8') as f:
-                    config = json.load(f)
-                # 合并默认配置，确保新添加的配置项存在
-                return self._merge_configs(self.defaults, config)
-            else:
-                self.save_config(self.defaults)
-                return self.defaults
-        except Exception as e:
-            print(f"加载配置文件失败: {e}")
+            # 如果配置文件不存在或已损坏，创建新的配置文件
+            self.save_config(self.defaults)
+            self.logger.info("已创建新的配置文件")
             return self.defaults
             
-    def save_config(self, config=None):
-        """保存配置文件"""
-        try:
-            if config is None:
-                config = self.config
-            
-            # 确保配置目录存在
-            self.config_dir.mkdir(parents=True, exist_ok=True)
-            
-            with open(self.config_file, 'w', encoding='utf-8') as f:
-                json.dump(config, f, ensure_ascii=False, indent=2)
-                
-            self.config = config
-            return True
         except Exception as e:
-            print(f"保存配置文件失败: {e}")
+            self.logger.error(f"加载配置文件失败: {e}")
+            return self.defaults
+            
+    def save_config(self, config=None) -> bool:
+        """保存配置文件"""
+        if config is None:
+            config = self.config
+            
+        try:
+            # 确保配置目录存在
+            os.makedirs(self.config_dir, exist_ok=True)
+            
+            # 先将配置写入临时文件
+            temp_file = self.config_file.with_suffix('.tmp')
+            with open(temp_file, 'w', encoding='utf-8') as f:
+                json.dump(config, f, ensure_ascii=False, indent=2)
+            
+            # 如果写入成功，替换原文件
+            if os.path.exists(self.config_file):
+                os.replace(temp_file, self.config_file)
+            else:
+                os.rename(temp_file, self.config_file)
+            
+            self.config = config
+            self.logger.info("成功保存配置文件")
+            return True
+            
+        except Exception as e:
+            self.logger.error(f"保存配置文件失败: {e}")
+            if os.path.exists(temp_file):
+                try:
+                    os.remove(temp_file)
+                except:
+                    pass
             return False
             
     def get(self, key: str, default: Any = None) -> Any:
@@ -144,10 +191,10 @@ class ConfigManager:
             config[keys[-1]] = value
             
             # 立即保存配置
-            self.save_config()
-            return True
+            return self.save_config()
+            
         except Exception as e:
-            print(f"设置配置项失败: {e}")
+            self.logger.error(f"设置配置项失败: {e}")
             return False
             
     def _merge_configs(self, default: Dict, config: Dict) -> Dict:

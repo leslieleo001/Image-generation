@@ -6,12 +6,13 @@ from PyQt6.QtWidgets import (
     QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, 
     QTableWidget, QTableWidgetItem, QPushButton, 
     QLabel, QFileDialog, QMessageBox, QHeaderView, QMenu,
-    QAbstractItemView
+    QAbstractItemView, QApplication
 )
-from PyQt6.QtCore import Qt, QSize, QPointF
-from PyQt6.QtGui import QPixmap, QIcon
-from PyQt6.QtGui import QDragEnterEvent, QDropEvent
-from PyQt6.QtGui import QPainter, QPen, QBrush, QColor
+from PyQt6.QtCore import Qt, QSize, QPointF, QPoint
+from PyQt6.QtGui import (
+    QPixmap, QIcon, QPainter, QPen, QBrush, QColor,
+    QCursor, QMouseEvent
+)
 from src.utils.history_manager import HistoryManager
 
 class DraggableTableWidget(QTableWidget):
@@ -20,16 +21,17 @@ class DraggableTableWidget(QTableWidget):
         super().__init__(history_window)
         self.history_manager = None
         self.history_window = history_window
+        self.dragging = False
+        self.drag_start_pos = None
         self.drag_source_row = -1
         self.drop_indicator_row = -1
+        self.drag_pixmap = None
         
-        # 启用拖放
-        self.setDragEnabled(True)
-        self.setAcceptDrops(True)
+        # 设置表格属性
+        self.setAcceptDrops(False)  # 禁用Qt的拖放
+        self.setDragEnabled(False)
         self.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
         self.setSelectionMode(QTableWidget.SelectionMode.SingleSelection)
-        self.setDragDropMode(QTableWidget.DragDropMode.InternalMove)
-        self.setDragDropOverwriteMode(False)
         self.setShowGrid(True)
         self.setAlternatingRowColors(True)
         
@@ -47,163 +49,110 @@ class DraggableTableWidget(QTableWidget):
             }
         """)
         
-    def startDrag(self, supportedActions):
-        """开始拖动时记录源行"""
-        self.drag_source_row = self.currentRow()
-        super().startDrag(supportedActions)
+        # 启用右键菜单
+        self.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
+        self.customContextMenuRequested.connect(self.show_context_menu)
         
-    def dropEvent(self, event):
-        """处理拖放事件"""
-        if not self.history_manager or self.drag_source_row < 0:
-            event.ignore()
+        # 启用双击事件
+        self.cellDoubleClicked.connect(self.handle_double_click)
+        
+    def mousePressEvent(self, event: QMouseEvent):
+        """处理鼠标按下事件"""
+        if event.button() == Qt.MouseButton.LeftButton:
+            # 获取点击的行
+            row = self.rowAt(event.pos().y())
+            if row >= 0:
+                self.drag_start_pos = event.pos()
+                self.drag_source_row = row
+                # 选中整行
+                self.selectRow(row)
+        super().mousePressEvent(event)
+        
+    def mouseMoveEvent(self, event: QMouseEvent):
+        """处理鼠标移动事件"""
+        if not (event.buttons() & Qt.MouseButton.LeftButton) or self.drag_source_row < 0:
             return
             
-        # 获取目标行
-        drop_row = self.drop_indicator_row
-        if drop_row < 0:
-            drop_row = self.rowCount() - 1
-            
-        # 如果是相同位置，不处理
-        if self.drag_source_row == drop_row:
-            event.ignore()
-            return
-            
-        try:
-            # 记住当前的滚动位置
-            scrollbar = self.verticalScrollBar()
-            scroll_pos = scrollbar.value()
-            
-            # 暂时阻止信号
-            self.blockSignals(True)
-            
-            # 移动记录
-            record = self.history_manager.records.pop(self.drag_source_row)
-            if drop_row > self.drag_source_row:
-                drop_row -= 1
-            self.history_manager.records.insert(drop_row, record)
-            
-            # 保存更改并发送更新信号
-            self.history_manager.save_records()
-            
-            # 直接根据history_manager.records重新填充表格内容
-            for row, record in enumerate(self.history_manager.records):
-                # 复选框
-                checkbox_item = QTableWidgetItem()
-                checkbox_item.setCheckState(Qt.CheckState.Unchecked)
-                self.setItem(row, 0, checkbox_item)
+        # 检查是否达到拖动阈值
+        if not self.dragging and self.drag_start_pos:
+            if (event.pos() - self.drag_start_pos).manhattanLength() < 10:  # 使用固定值替代QApplication.startDragDistance()
+                return
                 
-                # 缩略图
-                image_paths = record.get("image_paths", [])
-                if not image_paths and "image_path" in record:
-                    image_paths = [record["image_path"]]
-                
-                if image_paths:
-                    # 创建缩略图容器
-                    thumb_widget = QWidget()
-                    thumb_layout = QHBoxLayout(thumb_widget)
-                    thumb_layout.setContentsMargins(2, 2, 2, 2)
-                    thumb_layout.setSpacing(2)
-                    
-                    # 显示最多4张缩略图
-                    for path in image_paths[:4]:
-                        if os.path.exists(path):
-                            pixmap = QPixmap(path)
-                            scaled_pixmap = pixmap.scaled(60, 60, Qt.AspectRatioMode.KeepAspectRatio)
-                            label = QLabel()
-                            label.setPixmap(scaled_pixmap)
-                            thumb_layout.addWidget(label)
-                    
-                    if len(image_paths) > 4:
-                        more_label = QLabel(f"+{len(image_paths)-4}")
-                        thumb_layout.addWidget(more_label)
-                    
-                    thumb_layout.addStretch()
-                    self.setCellWidget(row, 1, thumb_widget)
-                
-                # 名称
-                if image_paths:
-                    filename = os.path.splitext(os.path.basename(image_paths[0]))[0]
-                    if len(image_paths) > 1:
-                        filename += f" (+{len(image_paths)-1})"
-                    self.setItem(row, 2, QTableWidgetItem(filename))
-                else:
-                    self.setItem(row, 2, QTableWidgetItem("未知"))
-                
-                # 提示词
-                params = record.get("params", {})
-                prompt = params.get("prompt", "")
-                self.setItem(row, 3, QTableWidgetItem(prompt))
-                
-                # 模型
-                model = params.get("model", "")
-                self.setItem(row, 4, QTableWidgetItem(model))
-                
-                # 参数
-                param_text = f"尺寸: {params.get('size', '')}\n"
-                param_text += f"步数: {params.get('num_inference_steps', '')}\n"
-                param_text += f"引导系数: {params.get('guidance_scale', '')}\n"
-                param_text += f"数量: {len(image_paths)}"
-                self.setItem(row, 5, QTableWidgetItem(param_text))
-                
-                # 保存路径
-                path_text = "\n".join(image_paths)
-                self.setItem(row, 6, QTableWidgetItem(path_text))
-                
-                # 操作列（空）
-                empty_widget = QWidget()
-                self.setCellWidget(row, 7, empty_widget)
+            self.dragging = True
+            # 创建拖动时的预览图像
+            row_rect = self.visualRect(self.model().index(self.drag_source_row, 0))
+            row_rect.setWidth(self.viewport().width())
+            self.drag_pixmap = self.viewport().grab(row_rect)
             
-            # 恢复信号
-            self.blockSignals(False)
-            
-            # 恢复滚动位置
-            scrollbar.setValue(scroll_pos)
-            
-            # 选中移动后的行
-            self.selectRow(drop_row)
-            
-            # 发送历史记录更新信号
-            self.history_manager.history_updated.emit()
-            
-        except Exception as e:
-            print(f"拖放处理出错: {str(e)}")
-            event.ignore()
-        finally:
-            self.drag_source_row = -1
-            self.drop_indicator_row = -1
-            self.viewport().update()
-            
-    def dragEnterEvent(self, event):
-        """处理拖动进入事件"""
-        if event.source() == self:
-            event.accept()
-        else:
-            event.ignore()
-            
-    def dragMoveEvent(self, event):
-        """处理拖动移动事件"""
-        if event.source() == self:
+        if self.dragging:
             # 计算目标行
-            pos = event.position().toPoint()
+            pos = event.pos()
             row = self.rowAt(pos.y())
             
-            # 处理拖到表格末尾的情况
+            # 处理拖到表格边界的情况
             if row < 0:
-                row = self.rowCount()
-            
+                if pos.y() < 0:
+                    row = 0
+                else:
+                    row = self.rowCount()
+                    
             # 更新拖放指示器位置
-            self.drop_indicator_row = row
-            self.viewport().update()
-            event.accept()
-        else:
-            event.ignore()
-            
+            if row != self.drop_indicator_row:
+                self.drop_indicator_row = row
+                self.viewport().update()
+        
+    def mouseReleaseEvent(self, event: QMouseEvent):
+        """处理鼠标释放事件"""
+        if event.button() == Qt.MouseButton.LeftButton and self.dragging:
+            try:
+                if (self.drop_indicator_row >= 0 and 
+                    self.drag_source_row >= 0 and 
+                    self.drag_source_row != self.drop_indicator_row and
+                    self.drag_source_row < self.rowCount() and
+                    self.drop_indicator_row <= self.rowCount()):
+                    
+                    # 记住当前的滚动位置
+                    scrollbar = self.verticalScrollBar()
+                    scroll_pos = scrollbar.value()
+                    
+                    # 移动记录
+                    record = self.history_manager.records.pop(self.drag_source_row)
+                    insert_pos = self.drop_indicator_row
+                    if insert_pos > self.drag_source_row:
+                        insert_pos -= 1
+                    self.history_manager.records.insert(insert_pos, record)
+                    
+                    # 保存更改
+                    self.history_manager.save_records()
+                    
+                    # 更新表格内容
+                    self.history_window.refresh_table()
+                    
+                    # 恢复滚动位置并选中移动后的行
+                    scrollbar.setValue(scroll_pos)
+                    self.selectRow(insert_pos)
+                    
+                    # 发送历史记录更新信号
+                    self.history_manager.history_updated.emit()
+                    
+            except Exception as e:
+                print(f"拖放处理失败: {str(e)}")
+                
+        # 重置拖动状态
+        self.dragging = False
+        self.drag_start_pos = None
+        self.drag_source_row = -1
+        self.drop_indicator_row = -1
+        self.drag_pixmap = None
+        self.viewport().update()
+        
+        super().mouseReleaseEvent(event)
+        
     def paintEvent(self, event):
-        """绘制事件，用于显示拖放指示器"""
+        """绘制事件，用于显示拖放指示器和拖动预览"""
         super().paintEvent(event)
         
-        # 如果正在拖动，绘制指示器
-        if self.drag_source_row >= 0 and self.drop_indicator_row >= 0:
+        if self.dragging and self.drop_indicator_row >= 0:
             painter = QPainter(self.viewport())
             painter.setPen(QPen(QColor("#0078d7"), 2, Qt.PenStyle.SolidLine))
             
@@ -238,6 +187,82 @@ class DraggableTableWidget(QTableWidget):
                 QPointF(width, y + triangle_size)
             ]
             painter.drawPolygon(points)
+            
+            # 绘制拖动预览
+            if self.drag_pixmap and not self.drag_pixmap.isNull():
+                cursor_pos = self.mapFromGlobal(QCursor.pos())
+                y = cursor_pos.y() - self.drag_pixmap.height() // 2
+                painter.setOpacity(0.7)
+                painter.drawPixmap(QPoint(0, y), self.drag_pixmap)
+
+    def handle_double_click(self, row, column):
+        """处理双击事件，打开图片"""
+        try:
+            if row < 0 or row >= len(self.history_manager.records):
+                return
+                
+            record = self.history_manager.records[row]
+            if not record:
+                return
+                
+            image_paths = record.get("image_paths", [])
+            if not image_paths and "image_path" in record:
+                image_paths = [record["image_path"]]
+            
+            if not image_paths:
+                return
+                
+            # 打开第一张图片
+            if os.path.exists(image_paths[0]):
+                os.startfile(image_paths[0])
+            else:
+                QMessageBox.warning(self, "错误", "图片文件不存在")
+                
+        except Exception as e:
+            print(f"打开图片失败: {str(e)}")
+            QMessageBox.warning(self, "错误", f"打开图片失败: {str(e)}")
+
+    def show_context_menu(self, pos):
+        """显示右键菜单"""
+        try:
+            menu = QMenu(self)
+            
+            # 获取当前行
+            row = self.indexAt(pos).row()
+            if row < 0 or row >= len(self.history_manager.records):
+                return
+                
+            # 获取图片路径
+            record = self.history_manager.records[row]
+            if not record:
+                return
+                
+            image_paths = record.get("image_paths", [])
+            if not image_paths and "image_path" in record:
+                image_paths = [record["image_path"]]
+            
+            if not image_paths:
+                return
+                
+            # 添加菜单项
+            open_folder_action = menu.addAction("打开图片所在文件夹")
+            
+            # 显示菜单并获取选择的动作
+            action = menu.exec(self.viewport().mapToGlobal(pos))
+            
+            if action == open_folder_action:
+                # 打开文件夹并选中图片
+                if os.path.exists(image_paths[0]):
+                    # 获取绝对路径
+                    abs_path = os.path.abspath(image_paths[0])
+                    # 使用 explorer /select 命令打开文件夹并选中文件
+                    os.system(f'explorer /select,"{abs_path}"')
+                else:
+                    QMessageBox.warning(self, "错误", "文件夹不存在")
+                    
+        except Exception as e:
+            print(f"显示右键菜单失败: {str(e)}")
+            QMessageBox.warning(self, "错误", f"显示右键菜单失败: {str(e)}")
 
 class HistoryWindow(QMainWindow):
     def __init__(self, history_manager):
@@ -295,9 +320,9 @@ class HistoryWindow(QMainWindow):
         self.table.history_manager = self.history_manager
         
         # 设置表格属性
-        self.table.setColumnCount(8)
+        self.table.setColumnCount(7)  # 减少一列，移除操作列
         self.table.setHorizontalHeaderLabels([
-            "", "预览", "名称", "提示词", "模型", "参数", "保存路径", "操作"
+            "选择", "缩略图", "名称", "提示词", "模型", "参数", "保存路径"
         ])
         
         # 设置表格选择模式
@@ -306,22 +331,24 @@ class HistoryWindow(QMainWindow):
         
         # 设置列宽
         self.table.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeMode.Fixed)  # 复选框列
+        self.table.setColumnWidth(0, 30)  # 复选框列宽
+        
         self.table.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeMode.Fixed)  # 预览列
-        self.table.horizontalHeader().setSectionResizeMode(2, QHeaderView.ResizeMode.ResizeToContents)  # 名称列
+        self.table.setColumnWidth(1, 54)  # 预览列宽 (50像素缩略图 + 2个边距 * 2像素)
+        
+        self.table.horizontalHeader().setSectionResizeMode(2, QHeaderView.ResizeMode.Interactive)  # 名称列
+        self.table.setColumnWidth(2, 150)  # 名称列默认宽度
+        
         self.table.horizontalHeader().setSectionResizeMode(3, QHeaderView.ResizeMode.Stretch)  # 提示词列
-        self.table.horizontalHeader().setSectionResizeMode(4, QHeaderView.ResizeMode.ResizeToContents)  # 模型列
-        self.table.horizontalHeader().setSectionResizeMode(5, QHeaderView.ResizeMode.ResizeToContents)  # 参数列
-        self.table.horizontalHeader().setSectionResizeMode(6, QHeaderView.ResizeMode.ResizeToContents)  # 路径列
-        self.table.horizontalHeader().setSectionResizeMode(7, QHeaderView.ResizeMode.Fixed)  # 操作列
         
-        # 设置固定列宽
-        self.table.setColumnWidth(0, 30)  # 复选框列
-        self.table.setColumnWidth(1, 250)  # 预览列
-        self.table.setColumnWidth(7, 100)  # 操作列
+        self.table.horizontalHeader().setSectionResizeMode(4, QHeaderView.ResizeMode.Interactive)  # 模型列
+        self.table.setColumnWidth(4, 100)  # 模型列默认宽度
         
-        # 启用右键菜单
-        self.table.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
-        self.table.customContextMenuRequested.connect(self.show_context_menu)
+        self.table.horizontalHeader().setSectionResizeMode(5, QHeaderView.ResizeMode.Interactive)  # 参数列
+        self.table.setColumnWidth(5, 120)  # 参数列默认宽度
+        
+        self.table.horizontalHeader().setSectionResizeMode(6, QHeaderView.ResizeMode.Interactive)  # 保存路径列
+        self.table.setColumnWidth(6, 200)  # 保存路径列默认宽度
         
         # 添加到布局
         layout.addLayout(toolbar)
@@ -360,6 +387,10 @@ class HistoryWindow(QMainWindow):
         # 先设置正确的行数
         self.table.setRowCount(len(records))
         
+        # 设置统一的行高
+        for row in range(len(records)):
+            self.table.setRowHeight(row, 54)  # 设置行高为54像素（50像素缩略图 + 2*2像素边距）
+        
         # 更新表格内容
         for idx, record in enumerate(records):
             # 添加复选框
@@ -377,22 +408,19 @@ class HistoryWindow(QMainWindow):
                 thumb_widget = QWidget()
                 thumb_layout = QHBoxLayout(thumb_widget)
                 thumb_layout.setContentsMargins(2, 2, 2, 2)
-                thumb_layout.setSpacing(2)
+                thumb_layout.setSpacing(0)
                 
-                # 显示最多4张缩略图
-                for path in image_paths[:4]:
-                    if os.path.exists(path):
-                        pixmap = QPixmap(path)
-                        scaled_pixmap = pixmap.scaled(60, 60, Qt.AspectRatioMode.KeepAspectRatio)
-                        label = QLabel()
-                        label.setPixmap(scaled_pixmap)
-                        thumb_layout.addWidget(label)
+                # 只显示第一张图片的缩略图
+                path = image_paths[0]
+                if os.path.exists(path):
+                    pixmap = QPixmap(path)
+                    scaled_pixmap = pixmap.scaled(50, 50, Qt.AspectRatioMode.KeepAspectRatio)
+                    label = QLabel()
+                    label.setFixedSize(50, 50)
+                    label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+                    label.setPixmap(scaled_pixmap)
+                    thumb_layout.addWidget(label)
                 
-                if len(image_paths) > 4:
-                    more_label = QLabel(f"+{len(image_paths)-4}")
-                    thumb_layout.addWidget(more_label)
-                
-                thumb_layout.addStretch()
                 self.table.setCellWidget(idx, 1, thumb_widget)
             
             # 名称（使用文件名，不带扩展名）
@@ -423,26 +451,34 @@ class HistoryWindow(QMainWindow):
             # 保存路径
             path_text = "\n".join(image_paths)
             self.table.setItem(idx, 6, QTableWidgetItem(path_text))
-            
-            # 移除操作按钮，改用右键菜单
-            empty_widget = QWidget()
-            self.table.setCellWidget(idx, 7, empty_widget)
     
     def delete_selected(self, delete_files=False):
         """删除选中的记录"""
         # 获取选中的行
-        checked_rows = self.get_checked_rows()
-        if not checked_rows:
+        selected_rows = set()
+        
+        # 获取通过点击选中的行
+        for item in self.table.selectedItems():
+            selected_rows.add(item.row())
+        
+        # 获取通过复选框选中的行
+        for row in range(self.table.rowCount()):
+            if self.table.item(row, 0) and self.table.item(row, 0).checkState() == Qt.CheckState.Checked:
+                selected_rows.add(row)
+        
+        selected_rows = sorted(selected_rows, reverse=True)  # 从后往前排序
+        
+        if not selected_rows:
             QMessageBox.warning(self, "警告", "请先选择要删除的记录")
             return
             
         # 确认删除
-        msg = f"确定要删除选中的 {len(checked_rows)} 条记录吗？"
+        msg = "确定要删除选中的记录吗？"
         if delete_files:
-            msg += "\n同时也会删除对应的图片文件！"
-            
+            msg = "确定要删除选中的记录及其关联的图片文件吗？"
+        
         reply = QMessageBox.question(
-            self,
+            self, 
             "确认删除",
             msg,
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
@@ -450,29 +486,39 @@ class HistoryWindow(QMainWindow):
         
         if reply == QMessageBox.StandardButton.Yes:
             try:
-                # 如果需要删除文件
-                if delete_files:
-                    for row in checked_rows:
+                # 从后往前删除，避免索引变化
+                for row in selected_rows:
+                    if row < len(self.history_manager.records):
                         record = self.history_manager.records[row]
-                        image_paths = record.get("image_paths", [])
-                        if not image_paths and "image_path" in record:
-                            image_paths = [record["image_path"]]
                         
-                        for path in image_paths:
-                            try:
+                        # 如果需要删除文件
+                        if delete_files:
+                            image_paths = record.get("image_paths", [])
+                            if not image_paths and "image_path" in record:
+                                image_paths = [record["image_path"]]
+                            
+                            for path in image_paths:
                                 if os.path.exists(path):
-                                    os.remove(path)
-                            except Exception as e:
-                                print(f"删除文件失败: {path}, 错误: {e}")
+                                    try:
+                                        os.remove(path)
+                                    except Exception as e:
+                                        print(f"删除文件失败: {path}, 错误: {str(e)}")
+                        
+                        # 删除记录
+                        del self.history_manager.records[row]
                 
-                # 删除记录
-                self.history_manager.delete_records(checked_rows)
+                # 保存更改
+                self.history_manager.save_records()
                 
                 # 刷新表格
                 self.refresh_table()
                 
+                # 发送历史记录更新信号
+                self.history_manager.history_updated.emit()
+                
             except Exception as e:
-                QMessageBox.critical(self, "错误", f"删除记录失败: {str(e)}")
+                print(f"删除记录失败: {str(e)}")
+                raise  # 重新抛出异常以便测试捕获
     
     def export_to_excel(self):
         """导出选中记录为Excel（包含原图）"""
@@ -516,7 +562,7 @@ class HistoryWindow(QMainWindow):
                 ws.cell(row=1, column=col, value=header)
             
             # 设置第一列的宽度（用于显示图片）
-            ws.column_dimensions['A'].width = 40  # 增加列宽以显示更大的图片
+            ws.column_dimensions['A'].width = 20  # 设置为20个字符宽度（约120像素）
             
             # 设置行高
             ws.row_dimensions[1].height = 15  # 标题行高度
@@ -537,16 +583,28 @@ class HistoryWindow(QMainWindow):
                             # 直接使用原图
                             img = Image(img_path)
                             
-                            # 设置合适的显示大小（保持原始比例）
-                            max_height = 300  # 最大显示高度
-                            scale = min(1.0, max_height / img.height)
-                            img.width = img.width * scale
-                            img.height = img.height * scale
+                            # 计算合适的显示大小
+                            # Excel中1个字符宽度约等于6像素，1个单位高度约等于1.5像素
+                            max_width = 120  # 20个字符宽度 * 6像素
+                            max_height = 100  # 约67个单位高度（100像素）
                             
-                            # 设置行高以适应图片
-                            ws.row_dimensions[row_idx].height = img.height * 0.75  # 转换为Excel单位
+                            # 计算缩放比例
+                            width_scale = max_width / img.width if img.width > max_width else 1
+                            height_scale = max_height / img.height if img.height > max_height else 1
+                            scale = min(width_scale, height_scale)
                             
-                            # 将图片添加到单元格
+                            # 应用缩放
+                            img.width = int(img.width * scale)
+                            img.height = int(img.height * scale)
+                            
+                            # 设置行高，确保图片完整显示
+                            # 将像素转换为Excel单位（1像素约等于0.75单位）
+                            row_height = img.height * 0.75
+                            # 确保最小行高
+                            row_height = max(row_height, 20)
+                            ws.row_dimensions[row_idx].height = row_height
+                            
+                            # 将图片添加到单元格，并设置锚点使其居中
                             ws.add_image(img, f'A{row_idx}')
                     except Exception as e:
                         print(f"处理图片失败: {str(e)}")
@@ -589,49 +647,4 @@ class HistoryWindow(QMainWindow):
             QMessageBox.information(self, "提示", f"已导出 {len(selected_records)} 条记录")
             
         except Exception as e:
-            QMessageBox.warning(self, "错误", f"导出失败: {str(e)}")
-    
-    def show_context_menu(self, pos):
-        """显示右键菜单"""
-        # 获取点击的行
-        item = self.table.itemAt(pos)
-        if not item:
-            return
-            
-        row = item.row()
-        path_item = self.table.item(row, 6)  # 路径列的索引变为6
-        if not path_item:
-            return
-            
-        # 获取图片路径
-        image_paths = path_item.text().split("\n")
-        if not image_paths:
-            return
-            
-        # 创建右键菜单
-        menu = QMenu(self)
-        open_image = menu.addAction("打开图片")
-        open_folder = menu.addAction("打开图片位置")
-        
-        # 显示菜单并获取选择的动作
-        action = menu.exec(self.table.viewport().mapToGlobal(pos))
-        
-        if action == open_image:
-            self.open_image(image_paths[0])
-        elif action == open_folder:
-            self.open_folder(image_paths[0])
-            
-    def open_image(self, path):
-        """打开图片"""
-        if os.path.exists(path):
-            os.startfile(path)
-        else:
-            QMessageBox.warning(self, "错误", "图片文件不存在")
-    
-    def open_folder(self, path):
-        """打开文件夹"""
-        if os.path.exists(path):
-            folder_path = os.path.dirname(path)
-            os.startfile(folder_path)
-        else:
-            QMessageBox.warning(self, "错误", "文件夹不存在") 
+            QMessageBox.warning(self, "错误", f"导出失败: {str(e)}") 

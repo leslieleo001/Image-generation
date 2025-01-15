@@ -78,7 +78,7 @@ class SiliconFlowAPI:
                     "model": model,
                     "prompt": prompt,
                     "negative_prompt": negative_prompt,
-                    "image_size": size,
+                    "size": size,
                     "batch_size": batch_size,
                     "num_inference_steps": num_inference_steps,
                     "guidance_scale": guidance_scale,
@@ -111,9 +111,9 @@ class SiliconFlowAPI:
                         images = result["data"]
                         if seeds and len(seeds) == len(images):
                             for i, img in enumerate(images):
-                                img["seed"] = seeds[i]
+                                if "seed" not in img:
+                                    img["seed"] = seeds[i]
                         self.logger.debug(f"处理后的图片数据: {images}")
-                        result["data"] = images
                     
                     return result
                     
@@ -121,14 +121,14 @@ class SiliconFlowAPI:
                     error_msg = "API请求超出限制，请稍后重试"
                     self.logger.warning(f"第{retry_count + 1}次尝试失败: {error_msg}")
                     if retry_count == max_retries - 1:
-                        raise Exception(error_msg)
+                        raise APIError(error_msg, code=429)
                     time.sleep(5 * (retry_count + 1))  # 指数退避
                 
                 elif response.status_code == 503:
                     error_msg = "API服务暂时不可用，请稍后重试"
                     self.logger.warning(f"第{retry_count + 1}次尝试失败: {error_msg}")
                     if retry_count == max_retries - 1:
-                        raise Exception(error_msg)
+                        raise APIError(error_msg, code=503)
                     time.sleep(5 * (retry_count + 1))
                 
                 else:
@@ -140,32 +140,32 @@ class SiliconFlowAPI:
                     
                     self.logger.error(f"API请求失败: {error_msg}")
                     if retry_count == max_retries - 1:
-                        raise Exception(f"API请求失败: {error_msg}")
+                        raise APIError(error_msg, code=response.status_code)
                 
             except requests.exceptions.Timeout:
                 error_msg = "请求超时，请检查网络状态"
                 self.logger.warning(f"第{retry_count + 1}次尝试失败: {error_msg}")
                 if retry_count == max_retries - 1:
-                    raise Exception(error_msg)
+                    raise APIError(error_msg, code=408)
                 time.sleep(5 * (retry_count + 1))
                 
             except requests.exceptions.ConnectionError:
                 error_msg = "网络连接失败，请检查网络设置"
                 self.logger.warning(f"第{retry_count + 1}次尝试失败: {error_msg}")
                 if retry_count == max_retries - 1:
-                    raise Exception(error_msg)
+                    raise APIError(error_msg, code=503)
                 time.sleep(5 * (retry_count + 1))
                 
             except Exception as e:
                 last_error = str(e)
                 self.logger.error(f"生成图片时出错: {last_error}")
                 if retry_count == max_retries - 1:
-                    raise Exception(f"生成图片失败: {last_error}")
+                    raise APIError(f"生成图片失败: {last_error}", code=500)
                 time.sleep(5 * (retry_count + 1))
             
             retry_count += 1
         
-        raise Exception(f"达到最大重试次数，最后一次错误: {last_error}")
+        raise APIError(f"达到最大重试次数，最后一次错误: {last_error}", code=500)
     
     def download_image(self, url: str, save_path: Path) -> Path:
         """

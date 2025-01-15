@@ -84,7 +84,8 @@ def test_delete_selected_without_files(history_window, monkeypatch, qtbot):
             "image_paths": ["test2.jpg"]
         }
     ]
-    history_window.history_manager.records = mock_records.copy()
+    history_window.history_manager.records = mock_records
+    history_window.history_manager.get_records.return_value = mock_records
     history_window.refresh_table()
     qtbot.wait(100)  # 等待表格刷新
     
@@ -107,7 +108,20 @@ def test_delete_selected_without_files(history_window, monkeypatch, qtbot):
 def test_delete_selected_with_files(history_window, mock_history, test_image, qtbot, monkeypatch):
     """测试删除带文件的记录"""
     # 更新mock数据使用测试图片
-    mock_history.get_records.return_value[0]["image_paths"] = [test_image]
+    mock_history.records = [{
+        "timestamp": "2024-03-20 10:00:00",
+        "prompt": "test prompt 1",
+        "negative_prompt": "test negative 1",
+        "model": "test model",
+        "size": "512x512",
+        "steps": 20,
+        "guidance": 7.5,
+        "seed": 12345,
+        "image_paths": [test_image]
+    }]
+    mock_history.get_records.return_value = mock_history.records
+    history_window.refresh_table()
+    qtbot.wait(100)
     
     # 模拟用户确认
     monkeypatch.setattr(QMessageBox, "question", lambda *args: QMessageBox.StandardButton.Yes)
@@ -130,7 +144,20 @@ def test_delete_selected_multiple_files(history_window, mock_history, test_image
     image_paths = [test_image] * 3
     
     # 更新mock数据
-    mock_history.get_records.return_value[0]["image_paths"] = image_paths
+    mock_history.records = [{
+        "timestamp": "2024-03-20 10:00:00",
+        "prompt": "test prompt 1",
+        "negative_prompt": "test negative 1",
+        "model": "test model",
+        "size": "512x512",
+        "steps": 20,
+        "guidance": 7.5,
+        "seed": 12345,
+        "image_paths": image_paths
+    }]
+    mock_history.get_records.return_value = mock_history.records
+    history_window.refresh_table()
+    qtbot.wait(100)
     
     # 模拟用户确认
     monkeypatch.setattr(QMessageBox, "question", lambda *args: QMessageBox.StandardButton.Yes)
