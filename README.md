@@ -81,13 +81,23 @@ python -m src.main.main
 
 ```
 project/
-├── docs/                # 文档
+├── docs/                # 文档目录
+│   ├── PROJECT.md       # 项目说明
+│   ├── REQUIREMENTS.md  # 需求文档
+│   ├── DEVELOPMENT.md   # 开发文档
+│   ├── TESTING.md       # 测试文档
+│   ├── CHANGELOG.md     # 变更日志
+│   └── FAQ.md           # 常见问题
 ├── src/                 # 源代码
 │   ├── main/           # 主程序
 │   ├── ui/             # 界面
 │   └── utils/          # 工具
-├── tests/              # 测试
-└── requirements.txt    # 依赖
+├── tests/              # 测试用例
+├── config/             # 配置文件
+├── output/             # 输出目录
+├── presets/            # 预设目录
+├── history/            # 历史记录
+└── requirements.txt    # 依赖清单
 ```
 
 ## 开发相关

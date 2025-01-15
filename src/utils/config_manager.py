@@ -5,8 +5,13 @@ from pathlib import Path
 
 class ConfigManager:
     def __init__(self):
-        self.config_dir = Path.home() / '.image_generator'
+        # 获取项目根目录
+        self.project_root = Path(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
+        
+        # 配置文件路径（在项目目录下）
+        self.config_dir = self.project_root / 'config'
         self.config_file = self.config_dir / 'config.json'
+        
         self.defaults = {
             "api_key": "",
             "models": [
@@ -26,9 +31,9 @@ class ConfigManager:
                 "use_random_seed": True
             },
             "paths": {
-                "output_dir": str(Path("D:/AI project/图片")),
-                "presets_dir": "presets",
-                "history_file": "history.json"
+                "output_dir": str(self.project_root / "output"),
+                "presets_dir": str(self.project_root / "presets"),
+                "history_file": str(self.project_root / "history" / "history.json")
             },
             "history": {
                 "max_items": 100
@@ -44,7 +49,33 @@ class ConfigManager:
                 ]
             }
         }
+        
+        # 确保所有必要的目录存在
+        self._ensure_directories()
+        
+        # 加载配置
         self.config = self.load_config()
+        
+    def _ensure_directories(self):
+        """确保所有必要的目录存在"""
+        try:
+            # 创建配置目录
+            self.config_dir.mkdir(parents=True, exist_ok=True)
+            
+            # 创建输出目录
+            output_dir = Path(self.defaults["paths"]["output_dir"])
+            output_dir.mkdir(parents=True, exist_ok=True)
+            
+            # 创建预设目录
+            presets_dir = Path(self.defaults["paths"]["presets_dir"])
+            presets_dir.mkdir(parents=True, exist_ok=True)
+            
+            # 创建历史记录目录
+            history_dir = Path(self.defaults["paths"]["history_file"]).parent
+            history_dir.mkdir(parents=True, exist_ok=True)
+            
+        except Exception as e:
+            print(f"创建目录时出错: {e}")
         
     def load_config(self) -> Dict[str, Any]:
         """加载配置文件"""

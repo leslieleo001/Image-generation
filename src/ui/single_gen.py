@@ -152,10 +152,13 @@ class ImageGenerationThread(QThread):
                     
                     # 清理文件名中的非法字符
                     file_name = "".join(c for c in file_name if c.isalnum() or c in "._- ")
-                    # 确保文件名不会太长
-                    if len(file_name) > 200:
-                        file_name = file_name[:200]
+                    # 确保文件名不会太长（考虑Windows路径长度限制）
+                    if len(file_name) > 100:  # 减小最大长度以适应完整路径
+                        file_name = file_name[:100]
                     file_name = f"{file_name}.png"
+                    
+                    # 确保保存目录存在
+                    os.makedirs(self.save_dir, exist_ok=True)
                     
                     # 确保文件名唯一
                     file_path = os.path.join(self.save_dir, file_name)
@@ -165,6 +168,11 @@ class ImageGenerationThread(QThread):
                         new_name = f"{base_name}_{counter}{ext}"
                         file_path = os.path.join(self.save_dir, new_name)
                         counter += 1
+                    
+                    # 检查最终路径长度
+                    if len(file_path) > 250:  # Windows MAX_PATH 限制
+                        short_name = f"{i+1:02d}_{timestamp[:8]}_{seeds[i]}.png"
+                        file_path = os.path.join(self.save_dir, short_name)
                     
                     self.progress.emit(f"• 正在保存第 {i+1}/{batch_size} 张图片")
                     self.progress.emit(f"  - 保存路径: {file_path}")

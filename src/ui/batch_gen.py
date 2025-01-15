@@ -51,7 +51,7 @@ class BatchGenerationThread(QThread):
                 "{timestamp}": timestamp,
                 "{date}": date,
                 "{time}": time,
-                "{prompt}": prompt[:50].replace(" ", "_"),
+                "{prompt}": prompt[:30].replace(" ", "_"),  # 限制提示词长度
                 "{model}": self.params["model"].split("/")[-1],
                 "{size}": self.params["size"],
                 "{seed}": str(seeds[j]),
@@ -64,10 +64,30 @@ class BatchGenerationThread(QThread):
             
             # 确保文件名合法
             filename = "".join(c for c in filename if c.isalnum() or c in "._- ")
+            # 限制文件名长度
+            if len(filename) > 100:  # 减小最大长度以适应完整路径
+                filename = filename[:100]
             filename = f"{filename}.png"
+            
+            # 确保保存目录存在
+            os.makedirs(self.save_dir, exist_ok=True)
             
             # 保存图片
             filepath = os.path.join(self.save_dir, filename)
+            
+            # 确保文件名唯一
+            base_name, ext = os.path.splitext(filename)
+            counter = 1
+            while os.path.exists(filepath):
+                new_name = f"{base_name}_{counter}{ext}"
+                filepath = os.path.join(self.save_dir, new_name)
+                counter += 1
+            
+            # 检查最终路径长度
+            if len(filepath) > 250:  # Windows MAX_PATH 限制
+                short_name = f"{j+1:02d}_{timestamp[:8]}_{seeds[j]}.png"
+                filepath = os.path.join(self.save_dir, short_name)
+            
             with open(filepath, "wb") as f:
                 f.write(response.content)
             

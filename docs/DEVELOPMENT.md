@@ -30,16 +30,17 @@ pip install -r requirements.txt
 
 ### 1.3 重要说明
 1. 路径配置
-- 预设目录路径使用绝对路径，基于输出目录
-- 配置文件位置：`~/.image_generator/config.json`
-- 默认输出目录：`D:/AI project/图片`
-- 预设目录：`{output_dir}/presets`
+- 所有路径均使用相对路径，基于项目根目录
+- 配置文件位置：`{project_root}/config/config.json`
+- 默认输出目录：`{project_root}/output`
+- 预设目录：`{project_root}/presets`
+- 历史记录：`{project_root}/history/history.json`
 
 2. 注意事项
-- 确保输出目录存在且有写入权限
-- 预设目录会自动创建在输出目录下
-- 不要使用相对路径配置预设目录
+- 所有必要的目录会在程序启动时自动创建
+- 移动项目时需要整个文件夹一起移动
 - 文件命名会自动处理非法字符
+- 建议使用版本控制时忽略 output、config、history 目录
 
 ## 2. 项目结构
 

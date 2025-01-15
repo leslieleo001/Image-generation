@@ -277,12 +277,17 @@ class HistoryWindow(QMainWindow):
         export_btn = QPushButton("导出到Excel")
         export_btn.clicked.connect(self.export_to_excel)
         
+        # 刷新按钮
+        refresh_btn = QPushButton("刷新")
+        refresh_btn.clicked.connect(self.refresh_table)
+        
         # 添加按钮到工具栏
         toolbar.addWidget(select_all_btn)
         toolbar.addWidget(unselect_all_btn)
         toolbar.addWidget(delete_btn)
         toolbar.addWidget(delete_with_files_btn)
         toolbar.addWidget(export_btn)
+        toolbar.addWidget(refresh_btn)
         toolbar.addStretch()
         
         # 创建表格
