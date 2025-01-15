@@ -136,3 +136,26 @@ pytest --cov=src
 - [Silicon Flow API](https://siliconflow.com) - 提供图片生成服务
 - [PyQt6](https://www.riverbankcomputing.com/software/pyqt/) - GUI 框架
 - [pytest](https://docs.pytest.org/) - 测试框架 
+
+## 运行方式
+
+### 独立运行版本（推荐）
+1. 下载最新版本的 `Silicon Flow.exe`
+2. 创建一个新文件夹并将exe文件放入
+3. 双击运行程序
+
+### 源代码运行
+1. 克隆仓库
+2. 安装依赖：`pip install -r requirements.txt`
+3. 运行程序：`python src/main/main.py`
+
+## 系统要求
+
+### 独立运行版本
+- Windows 10/11 64位系统
+- 4GB以上内存
+- 建议安装 Visual C++ Redistributable 2022
+
+### 源代码运行
+- Python 3.11 或更高版本
+- 见 requirements.txt 中的依赖要求 
