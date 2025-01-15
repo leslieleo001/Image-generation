@@ -26,7 +26,7 @@ class ConfigManager:
                 "use_random_seed": True
             },
             "paths": {
-                "output_dir": str(Path.home() / "Pictures" / "AI生成"),
+                "output_dir": str(Path("D:/AI project/图片")),
                 "presets_dir": "presets",
                 "history_file": "history.json"
             },

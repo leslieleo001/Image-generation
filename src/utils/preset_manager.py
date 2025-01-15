@@ -12,7 +12,8 @@ class PresetManager:
             config: 配置管理器实例
         """
         self.config = config
-        self.presets_dir = Path(config.get("paths.presets_dir", "presets"))
+        output_dir = Path(config.get("paths.output_dir"))
+        self.presets_dir = output_dir / config.get("paths.presets_dir", "presets")
         self.presets_dir.mkdir(parents=True, exist_ok=True)
         self._presets = {}
         self.load_presets()
