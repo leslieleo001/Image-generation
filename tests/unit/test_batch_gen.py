@@ -152,15 +152,8 @@ def test_task_completion(mock_history, mock_api, batch_gen_tab, qtbot):
     batch_gen_tab.current_task_index = 0
     
     # 模拟生成的文件
-    saved_files = ["/path/to/test_image.jpg"]
-    
-    # 调用完成处理方法
-    batch_gen_tab.on_generation_finished(saved_files)
-    qtbot.wait(100)  # 等待事件处理
-    
-    # 验证是否调用了添加历史记录的方法
-    mock_history.add_record.assert_called_once_with({
-        "timestamp": ANY,
+    record = {
+        "timestamp": "2024-01-15 19:40:00",
         "params": {
             "prompt": "test prompt",
             "negative_prompt": "test negative", 
@@ -171,7 +164,18 @@ def test_task_completion(mock_history, mock_api, batch_gen_tab, qtbot):
             "seed": 12345,
             "source": "batch"
         },
-        "image_paths": ["/path/to/test_image.jpg"]
+        "image_path": "/path/to/test_image.jpg"
+    }
+    
+    # 调用图片保存完成处理方法
+    batch_gen_tab.on_image_saved(record)
+    qtbot.wait(100)  # 等待事件处理
+    
+    # 验证是否调用了添加历史记录的方法
+    mock_history.add_record.assert_called_once_with({
+        "timestamp": record["timestamp"],
+        "params": record["params"],
+        "image_paths": [record["image_path"]]
     })
 
 def test_task_error(batch_gen_tab):

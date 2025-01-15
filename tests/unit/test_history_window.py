@@ -58,9 +58,9 @@ def history_window(qtbot, mock_history, test_image):
 def test_history_window_init(history_window):
     """测试历史记录窗口初始化"""
     assert history_window.windowTitle() == "历史记录管理"
-    assert history_window.table.columnCount() == 8
-    headers = [history_window.table.horizontalHeaderItem(i).text() for i in range(8)]
-    assert headers == ["选择", "缩略图", "名称", "提示词", "模型", "参数", "保存路径", "操作"]
+    assert history_window.table.columnCount() == 7
+    headers = [history_window.table.horizontalHeaderItem(i).text() for i in range(7)]
+    assert headers == ["选择", "缩略图", "名称", "提示词", "模型", "参数", "保存路径"]
     
     # 验证初始数据
     assert len(history_window.history_manager.records) == 1

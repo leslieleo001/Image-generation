@@ -5,6 +5,8 @@ from PyQt6.QtTest import QTest, QSignalSpy
 from src.ui.single_gen import SingleGenTab
 from src.utils.api_manager import APIManager
 from src.utils.config_manager import ConfigManager
+from src.utils.history_manager import HistoryManager
+from unittest.mock import MagicMock
 import sys
 
 @pytest.fixture
@@ -16,11 +18,21 @@ def app():
     return app
 
 @pytest.fixture
-def single_gen_tab(app):
+def mock_history():
+    """创建历史记录管理器mock"""
+    history_mock = MagicMock(spec=HistoryManager)
+    history_mock.records = []
+    history_mock.get_records.return_value = history_mock.records
+    history_mock.add_record = MagicMock()
+    history_mock.save_records = MagicMock()
+    return history_mock
+
+@pytest.fixture
+def single_gen_tab(app, mock_history):
     """创建SingleGenTab实例"""
-    config = ConfigManager()
-    api_manager = APIManager(config)
-    return SingleGenTab(config, api_manager)
+    config_manager = ConfigManager()
+    api_manager = APIManager(config_manager)
+    return SingleGenTab(api_manager, config_manager, mock_history)
 
 def test_ui_initialization(single_gen_tab):
     """测试界面初始化"""

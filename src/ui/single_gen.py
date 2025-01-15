@@ -197,10 +197,10 @@ class ImageGenerationThread(QThread):
 class SingleGenTab(QWidget):
     """单图生成标签页"""
     
-    def __init__(self, config: ConfigManager, api_manager: APIManager, history_manager: HistoryManager):
+    def __init__(self, api_manager, config_manager, history_manager):
         super().__init__()
-        self.config = config
         self.api_manager = api_manager
+        self.config_manager = config_manager
         self.history_manager = history_manager
         
         # 连接历史记录更新信号
@@ -214,7 +214,10 @@ class SingleGenTab(QWidget):
         
     def init_ui(self):
         """初始化界面"""
-        layout = QHBoxLayout()
+        layout = QHBoxLayout()  # 改为水平布局
+        
+        # 获取默认参数
+        defaults = self.config_manager.get("defaults", {})
         
         # 左侧面板 - 参数设置
         left_panel = QWidget()
@@ -231,9 +234,6 @@ class SingleGenTab(QWidget):
         self.negative_input = QTextEdit()
         self.negative_input.setPlaceholderText("请输入负面提示词...")
         self.negative_input.setMaximumHeight(100)
-        
-        # 获取默认值
-        defaults = self.config.get("defaults", {})
         
         # 模型选择
         model_label = QLabel("模型:")
@@ -367,10 +367,9 @@ class SingleGenTab(QWidget):
         right_layout.addWidget(clear_history_btn)
         right_panel.setLayout(right_layout)
         
-        # 设置左右面板的比例
-        layout.addWidget(left_panel, stretch=2)
-        layout.addWidget(right_panel, stretch=1)
-        
+        # 设置布局
+        layout.addWidget(left_panel, stretch=2)  # 左侧面板占2份宽度
+        layout.addWidget(right_panel, stretch=1)  # 右侧面板占1份宽度
         self.setLayout(layout)
         
         # 加载历史记录
@@ -382,7 +381,7 @@ class SingleGenTab(QWidget):
     def update_defaults(self):
         """更新默认值"""
         try:
-            defaults = self.config.get("defaults", {})
+            defaults = self.config_manager.get("defaults", {})
             
             # 更新模型
             default_model = defaults.get("model", "")
@@ -581,13 +580,13 @@ class SingleGenTab(QWidget):
             }
             
             # 获取保存路径
-            save_dir = self.config.get("paths.output_dir")
+            save_dir = self.config_manager.get("paths.output_dir")
             if not save_dir:
                 save_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "图片保存")
             os.makedirs(save_dir, exist_ok=True)
             
             # 获取命名规则
-            naming_rule = self.config.get("naming.rule", "{timestamp}_{prompt}_{model}_{size}_{seed}")
+            naming_rule = self.config_manager.get("naming.rule", "{timestamp}_{prompt}_{model}_{size}_{seed}")
             print(f"使用命名规则: {naming_rule}")  # 添加日志
             
             # 禁用生成按钮

@@ -12,8 +12,10 @@ def temp_dir(tmp_path):
     if tmp_path.exists():
         shutil.rmtree(tmp_path)
 
-def test_directory_creation(temp_dir):
+def test_directory_creation(temp_dir, monkeypatch):
     """测试目录创建功能"""
+    # 修改当前工作目录为临时目录
+    monkeypatch.chdir(temp_dir)
     config_manager = ConfigManager()
     
     # 验证所有必要的目录是否存在
@@ -22,8 +24,10 @@ def test_directory_creation(temp_dir):
     assert os.path.exists(config_manager.defaults["paths"]["presets_dir"])
     assert os.path.exists(os.path.dirname(config_manager.defaults["paths"]["history_file"]))
 
-def test_config_save_and_load():
+def test_config_save_and_load(temp_dir, monkeypatch):
     """测试配置保存和加载功能"""
+    # 修改当前工作目录为临时目录
+    monkeypatch.chdir(temp_dir)
     config_manager = ConfigManager()
     
     # 测试保存配置
@@ -37,8 +41,10 @@ def test_config_save_and_load():
     new_config_manager = ConfigManager()
     assert new_config_manager.get("api_key") == test_api_key
 
-def test_config_merge():
+def test_config_merge(temp_dir, monkeypatch):
     """测试配置合并功能"""
+    # 修改当前工作目录为临时目录
+    monkeypatch.chdir(temp_dir)
     config_manager = ConfigManager()
     
     # 修改一些配置
@@ -65,8 +71,10 @@ def test_config_merge():
     assert new_config_manager.get("defaults.steps") == 20
     assert new_config_manager.get("defaults.guidance") == 7.5
 
-def test_config_error_handling():
+def test_config_error_handling(temp_dir, monkeypatch):
     """测试错误处理功能"""
+    # 修改当前工作目录为临时目录
+    monkeypatch.chdir(temp_dir)
     config_manager = ConfigManager()
     
     # 测试无效的配置键

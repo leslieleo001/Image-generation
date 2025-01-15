@@ -105,24 +105,38 @@ class SettingsTab(QWidget):
         
         # 预设规则选择
         self.naming_rule_combo = QComboBox()
-        self.naming_rule_combo.addItems([
-            "默认",
+        presets = self.config.get("naming_rule.presets", [
+            "{date}_{prompt}_{index}_{seed}",
             "{timestamp}_{prompt}_{model}_{size}_{seed}",
             "{date}_{time}_{prompt}_{model}_{size}",
             "自定义规则"
         ])
+        self.naming_rule_combo.addItems(presets)
+        
+        # 设置当前选中的预设规则
+        current_preset = self.config.get("naming_rule.preset", "{date}_{prompt}_{index}_{seed}")
+        index = self.naming_rule_combo.findText(current_preset)
+        if index >= 0:
+            self.naming_rule_combo.setCurrentIndex(index)
+        
         self.naming_rule_combo.currentTextChanged.connect(self.on_naming_rule_changed)
         
-        # 自定义规则输入和保存按钮布局
+        # 自定义规则输入和按钮布局
         custom_rule_layout = QHBoxLayout()
         self.custom_rule_input = QLineEdit()
         self.custom_rule_input.setPlaceholderText("请输入自定义命名规则")
         self.custom_rule_input.setEnabled(False)
         
+        button_layout = QHBoxLayout()
         save_rule_btn = QPushButton("保存为预设")
         save_rule_btn.clicked.connect(self.save_custom_rule)
+        delete_rule_btn = QPushButton("删除预设")
+        delete_rule_btn.clicked.connect(self.delete_custom_rule)
+        button_layout.addWidget(save_rule_btn)
+        button_layout.addWidget(delete_rule_btn)
+        
         custom_rule_layout.addWidget(self.custom_rule_input)
-        custom_rule_layout.addWidget(save_rule_btn)
+        custom_rule_layout.addLayout(button_layout)
         
         naming_layout.addRow("预设规则:", self.naming_rule_combo)
         naming_layout.addRow("自定义规则:", custom_rule_layout)
@@ -260,7 +274,7 @@ class SettingsTab(QWidget):
             # 清空并重新添加预设规则
             self.naming_rule_combo.clear()
             self.naming_rule_combo.addItems([
-                "默认",
+                "{date}_{prompt}_{index}_{seed}",
                 "{timestamp}_{prompt}_{model}_{size}_{seed}",
                 "{date}_{time}_{prompt}_{model}_{size}"
             ])
@@ -268,14 +282,12 @@ class SettingsTab(QWidget):
             # 添加保存的预设规则
             if saved_presets:
                 for preset in saved_presets:
-                    if preset not in ["默认", "自定义规则"] and \
+                    if preset not in ["{date}_{prompt}_{index}_{seed}", "{timestamp}_{prompt}_{model}_{size}_{seed}", 
+                                    "{date}_{time}_{prompt}_{model}_{size}", "自定义规则"] and \
                        self.naming_rule_combo.findText(preset) == -1:
-                        self.naming_rule_combo.insertItem(
-                            self.naming_rule_combo.count() - 1, 
-                            preset
-                        )
+                        self.naming_rule_combo.addItem(preset)
             
-            # 添加"自定义规则"选项
+            # 最后添加"自定义规则"选项
             self.naming_rule_combo.addItem("自定义规则")
             
             # 设置当前选择的规则
@@ -452,3 +464,46 @@ class SettingsTab(QWidget):
         except Exception as e:
             QMessageBox.warning(self, "错误", f"保存自定义规则失败: {e}")
             return 
+    
+    def delete_custom_rule(self):
+        """删除当前选中的预设规则"""
+        current_rule = self.naming_rule_combo.currentText()
+        
+        # 不允许删除默认规则和"自定义规则"选项
+        if current_rule in ["默认", "自定义规则"]:
+            QMessageBox.warning(self, "错误", "不能删除默认规则")
+            return
+            
+        # 确认删除
+        reply = QMessageBox.question(
+            self,
+            "确认删除",
+            f"确定要删除预设规则 '{current_rule}' 吗？",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No
+        )
+        
+        if reply == QMessageBox.StandardButton.Yes:
+            # 删除预设
+            index = self.naming_rule_combo.currentIndex()
+            self.naming_rule_combo.removeItem(index)
+            
+            # 更新配置
+            try:
+                # 获取当前所有预设规则
+                presets = []
+                for i in range(self.naming_rule_combo.count()):
+                    presets.append(self.naming_rule_combo.itemText(i))
+                
+                # 保存到配置
+                self.config.set("naming_rule.presets", presets)
+                
+                # 切换到默认规则
+                self.naming_rule_combo.setCurrentText("默认")
+                
+                # 发送设置更新信号
+                self.settings_updated.emit()
+                
+                QMessageBox.information(self, "成功", "预设规则已删除")
+            except Exception as e:
+                QMessageBox.warning(self, "错误", f"删除预设规则失败: {e}") 

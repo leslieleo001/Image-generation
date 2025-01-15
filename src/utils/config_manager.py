@@ -52,10 +52,10 @@ class ConfigManager:
                 "max_items": 100
             },
             "naming_rule": {
-                "preset": "默认",
-                "custom": "{timestamp}_{prompt}_{model}_{size}_{seed}",
+                "preset": "{date}_{prompt}_{index}_{seed}",
+                "custom": "{date}_{prompt}_{index}_{seed}",
                 "presets": [
-                    "默认",
+                    "{date}_{prompt}_{index}_{seed}",
                     "{timestamp}_{prompt}_{model}_{size}_{seed}",
                     "{date}_{time}_{prompt}_{model}_{size}",
                     "自定义规则"

@@ -196,8 +196,12 @@ class DraggableTableWidget(QTableWidget):
                 painter.drawPixmap(QPoint(0, y), self.drag_pixmap)
 
     def handle_double_click(self, row, column):
-        """处理双击事件，打开图片"""
+        """处理双击事件，只在双击缩略图列时打开图片"""
         try:
+            # 只在双击缩略图列（索引为1）时打开图片
+            if column != 1:
+                return
+                
             if row < 0 or row >= len(self.history_manager.records):
                 return
                 

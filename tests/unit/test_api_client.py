@@ -74,7 +74,8 @@ def test_api_rate_limit_error(api_client):
     with pytest.raises(APIError) as exc_info:
         api_client.generate_image(
             prompt="test prompt",
-            model="stabilityai/stable-diffusion-3-5-large"
+            model="stabilityai/stable-diffusion-3-5-large",
+            max_retries=1
         )
     assert exc_info.value.code == 429
     assert "API请求超出限制" in str(exc_info.value)
@@ -91,7 +92,8 @@ def test_api_server_error(api_client):
     with pytest.raises(APIError) as exc_info:
         api_client.generate_image(
             prompt="test prompt",
-            model="stabilityai/stable-diffusion-3-5-large"
+            model="stabilityai/stable-diffusion-3-5-large",
+            max_retries=1
         )
     assert exc_info.value.code == 503
     assert "API服务暂时不可用" in str(exc_info.value)

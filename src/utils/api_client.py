@@ -160,7 +160,10 @@ class SiliconFlowAPI:
                 last_error = str(e)
                 self.logger.error(f"生成图片时出错: {last_error}")
                 if retry_count == max_retries - 1:
-                    raise APIError(f"生成图片失败: {last_error}", code=500)
+                    if isinstance(e, APIError):
+                        raise e
+                    else:
+                        raise APIError(f"生成图片失败: {last_error}", code=500)
                 time.sleep(5 * (retry_count + 1))
             
             retry_count += 1

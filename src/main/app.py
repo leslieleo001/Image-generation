@@ -96,7 +96,7 @@ class MainWindow(QMainWindow):
         tabs = QTabWidget()
         
         # 创建各个标签页
-        self.single_gen_tab = SingleGenTab(self.config, self.api_manager, self.history_manager)
+        self.single_gen_tab = SingleGenTab(self.api_manager, self.config, self.history_manager)
         self.batch_gen_tab = BatchGenTab(self.api_manager, self.config, self.history_manager)
         self.settings_tab = SettingsTab(self.config, self.api_manager)
         self.help_tab = HelpTab()
